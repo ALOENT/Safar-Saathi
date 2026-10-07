@@ -1,0 +1,23 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Node modules
+node_modules
+dist
+dist-isolation
+
+# Local environment variables
+.env
+.env.local
+.env.*.local
+
+# Editor directories
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
