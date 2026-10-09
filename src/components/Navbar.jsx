@@ -1,7 +1,8 @@
 import React from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Home, Compass, MapPin, Bell, User, Shield, AlertTriangle } from 'lucide-react'
+import { NAV_CONFIG } from '../config/navConfig'
+import { Shield } from 'lucide-react'
 
 export const Navbar = () => {
   const { user, profile } = useAuth()
@@ -9,22 +10,8 @@ export const Navbar = () => {
 
   if (!user) return null
 
-  // Determine home link depending on role
-  const getHomePath = () => {
-    if (profile?.role === 'guide') return '/guide'
-    if (profile?.role === 'authority') return '/authority'
-    return '/home'
-  }
-
-  const homePath = getHomePath()
-
-  const navItems = [
-    { label: 'Home', path: homePath, icon: Home, matchPaths: ['/home', '/guide', '/authority'] },
-    { label: 'Trips', path: '/trips', icon: Compass, matchPaths: ['/trips'] },
-    { label: 'Map', path: '/map', icon: MapPin, matchPaths: ['/map'] },
-    { label: 'Alerts', path: '/alerts', icon: Bell, matchPaths: ['/alerts'] },
-    { label: 'Profile', path: '/profile', icon: User, matchPaths: ['/profile'] },
-  ]
+  const userRole = profile?.role || 'traveler'
+  const navItems = NAV_CONFIG[userRole] || NAV_CONFIG.traveler
 
   const getRoleBadgeColor = (role) => {
     switch (role) {
@@ -67,7 +54,7 @@ export const Navbar = () => {
         <div className="max-w-md mx-auto flex justify-around items-center">
           {navItems.map((item) => {
             const Icon = item.icon
-            const isActive = item.matchPaths.includes(location.pathname)
+            const isActive = location.pathname === item.path
 
             return (
               <NavLink

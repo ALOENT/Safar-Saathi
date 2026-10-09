@@ -1,6 +1,7 @@
 import React from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { ROLE_HOMES } from '../config/navConfig'
 import { Shield } from 'lucide-react'
 
 export const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -21,12 +22,10 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/login" replace />
   }
 
-  // If specific roles are required and user doesn't match
+  // If specific roles are required for this route, ensure user profile role matches
   if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
-    // Redirect to their role home page
-    if (profile.role === 'guide') return <Navigate to="/guide" replace />
-    if (profile.role === 'authority') return <Navigate to="/authority" replace />
-    return <Navigate to="/home" replace />
+    const defaultRoleHome = ROLE_HOMES[profile.role] || '/home'
+    return <Navigate to={defaultRoleHome} replace />
   }
 
   return children
