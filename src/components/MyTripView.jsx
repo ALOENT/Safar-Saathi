@@ -105,6 +105,16 @@ export const MyTripView = () => {
             )}
           </button>
         </div>
+
+        {/* View Live Map Quick Link */}
+        <a
+          href="/map"
+          className="w-full bg-emerald-950/90 hover:bg-emerald-900/90 border border-emerald-700/60 rounded-xl py-2.5 px-3 flex items-center justify-center space-x-2 text-xs font-bold text-emerald-300 transition-all shadow-sm"
+        >
+          <Compass className="w-4 h-4 text-emerald-400" />
+          <span>View Live Group Map</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </a>
       </div>
 
       {/* Member List */}

@@ -2,6 +2,7 @@ import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { TripProvider } from './context/TripContext'
+import { LocationProvider } from './context/LocationContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Navbar } from './components/Navbar'
 import { ROLE_HOMES } from './config/navConfig'
@@ -130,7 +131,9 @@ export default function App() {
     <Router>
       <AuthProvider>
         <TripProvider>
-          <AppRoutes />
+          <LocationProvider>
+            <AppRoutes />
+          </LocationProvider>
         </TripProvider>
       </AuthProvider>
     </Router>
