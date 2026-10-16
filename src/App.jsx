@@ -6,6 +6,7 @@ import { LocationProvider } from './context/LocationContext'
 import { SOSProvider } from './context/SOSContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Navbar } from './components/Navbar'
+import { OnlineBanner } from './components/OnlineBanner'
 import { SOSAlertBanner } from './components/SOSAlertBanner'
 import { ROLE_HOMES } from './config/navConfig'
 
@@ -32,6 +33,7 @@ const AppRoutes = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <Navbar />
+      <OnlineBanner />
       <SOSAlertBanner />
       <main className="flex-1">
         <Routes>
