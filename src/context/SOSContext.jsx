@@ -30,8 +30,9 @@ export const SOSProvider = ({ children }) => {
         .in('status', ['active', 'acknowledged'])
         .order('created_at', { ascending: false })
 
-      // Guide only sees alerts for their own trip
-      if (role === 'guide' && currentTrip?.id) {
+      // Guide only sees alerts for their own trip; skip entirely if no trip selected
+      if (role === 'guide') {
+        if (!currentTrip?.id) return
         query = query.eq('trip_id', currentTrip.id)
       }
 
@@ -63,8 +64,9 @@ export const SOSProvider = ({ children }) => {
       table: 'sos_alerts',
     }
 
-    // Guide filters by trip_id
-    if (role === 'guide' && currentTrip?.id) {
+    // Guide must have an active trip to subscribe
+    if (role === 'guide') {
+      if (!currentTrip?.id) return
       filterObj.filter = `trip_id=eq.${currentTrip.id}`
     }
 
@@ -123,8 +125,8 @@ export const SOSProvider = ({ children }) => {
 
     setSending(true)
     try {
-      const lat = myLocation?.lat || null
-      const lng = myLocation?.lng || null
+      const lat = myLocation?.lat ?? null
+      const lng = myLocation?.lng ?? null
       const tripId = currentTrip?.id || null
 
       const { data, error } = await supabase

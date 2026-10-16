@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSOS } from '../context/SOSContext'
 import { AlertTriangle, MapPin, CheckCircle2, X } from 'lucide-react'
@@ -6,6 +6,8 @@ import { AlertTriangle, MapPin, CheckCircle2, X } from 'lucide-react'
 export const SOSAlertBanner = () => {
   const { incomingAlert, dismissBanner, resolveAlert } = useSOS()
   const navigate = useNavigate()
+  const [resolveError, setResolveError] = useState(null)
+  const [resolving, setResolving] = useState(false)
 
   if (!incomingAlert) return null
 
@@ -22,7 +24,15 @@ export const SOSAlertBanner = () => {
   }
 
   const handleResolve = async () => {
-    await resolveAlert(incomingAlert.id)
+    setResolveError(null)
+    setResolving(true)
+    const result = await resolveAlert(incomingAlert.id)
+    setResolving(false)
+    if (result?.error) {
+      // Keep banner open, surface the error
+      setResolveError('Failed to resolve. Please try again.')
+    }
+    // On success resolveAlert calls dismissBanner internally — no extra action needed
   }
 
   return (
@@ -82,12 +92,18 @@ export const SOSAlertBanner = () => {
               <span>View on Map</span>
             </button>
           )}
+          {resolveError && (
+            <p className="text-xs text-red-300 bg-red-950/60 border border-red-700/50 rounded-lg px-3 py-2">
+              {resolveError}
+            </p>
+          )}
           <button
             onClick={handleResolve}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-sm active:scale-95 transition-all"
+            disabled={resolving}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-sm active:scale-95 transition-all disabled:opacity-60"
           >
             <CheckCircle2 className="w-5 h-5" />
-            <span>Mark Resolved</span>
+            <span>{resolving ? 'Resolving…' : 'Mark Resolved'}</span>
           </button>
         </div>
       </div>

@@ -27,13 +27,51 @@ ALTER TABLE public.sos_alerts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow users to create own SOS alert" ON public.sos_alerts
     FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
--- Authenticated users can read all SOS alerts (guides filter client-side by trip_id)
-CREATE POLICY "Allow authenticated to read all SOS alerts" ON public.sos_alerts
-    FOR SELECT TO authenticated USING (true);
+-- Alert owner, the trip's guide, or an authority can read the alert
+CREATE POLICY "Allow scoped read of SOS alerts" ON public.sos_alerts
+    FOR SELECT TO authenticated USING (
+        auth.uid() = user_id
+        OR (
+            trip_id IS NOT NULL
+            AND EXISTS (
+                SELECT 1 FROM public.trips
+                WHERE trips.id = sos_alerts.trip_id
+                  AND trips.created_by = auth.uid()
+            )
+        )
+        OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE profiles.id = auth.uid()
+              AND profiles.role = 'authority'
+        )
+    );
 
--- Authenticated users can update status (prototype: any authenticated user can resolve)
-CREATE POLICY "Allow authenticated to update SOS status" ON public.sos_alerts
-    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+-- Only the trip's guide or an authority can update the status field
+CREATE POLICY "Allow guide and authority to update SOS status" ON public.sos_alerts
+    FOR UPDATE TO authenticated
+    USING (
+        (
+            trip_id IS NOT NULL
+            AND EXISTS (
+                SELECT 1 FROM public.trips
+                WHERE trips.id = sos_alerts.trip_id
+                  AND trips.created_by = auth.uid()
+            )
+        )
+        OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE profiles.id = auth.uid()
+              AND profiles.role = 'authority'
+        )
+    )
+    WITH CHECK (
+        -- Prevent changing any field other than status
+        user_id = sos_alerts.user_id
+        AND trip_id IS NOT DISTINCT FROM sos_alerts.trip_id
+        AND lat IS NOT DISTINCT FROM sos_alerts.lat
+        AND lng IS NOT DISTINCT FROM sos_alerts.lng
+        AND created_at = sos_alerts.created_at
+    );
 
 -- 4. Enable Supabase Realtime for sos_alerts
 ALTER PUBLICATION supabase_realtime ADD TABLE public.sos_alerts;

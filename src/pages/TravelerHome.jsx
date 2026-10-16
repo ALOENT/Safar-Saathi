@@ -15,6 +15,7 @@ export const TravelerHome = () => {
   // SOS countdown state
   const [countdown, setCountdown] = useState(null) // null = idle, 3/2/1 = counting
   const countdownRef = useRef(null)
+  const [sosError, setSosError] = useState(null)
 
   const handleCopyCode = () => {
     if (!currentTrip?.code) return
@@ -26,6 +27,7 @@ export const TravelerHome = () => {
   // Start 3-second countdown
   const handleSOSPress = () => {
     if (countdown !== null || sending) return
+    setSosError(null)
     setCountdown(3)
   }
 
@@ -43,9 +45,14 @@ export const TravelerHome = () => {
     if (countdown === null) return
 
     if (countdown === 0) {
-      // Fire SOS
-      sendSOS()
+      // Fire SOS and inspect result
+      const result = await sendSOS()
       setCountdown(null)
+      if (result?.error) {
+        setSosError('SOS failed to send. Tap to try again.')
+      } else {
+        setSosError(null)
+      }
       return
     }
 
@@ -208,6 +215,11 @@ export const TravelerHome = () => {
               <h3 className="text-base font-bold text-white">Emergency SOS Alert</h3>
               <p className="text-xs text-slate-400 mt-0.5">Press to trigger instant location alert to Guide & Authorities</p>
             </div>
+            {sosError && (
+              <p className="text-xs text-red-300 bg-red-950/60 border border-red-700/50 rounded-lg px-3 py-2">
+                ⚠️ {sosError}
+              </p>
+            )}
             <button
               onClick={handleSOSPress}
               disabled={sending}
