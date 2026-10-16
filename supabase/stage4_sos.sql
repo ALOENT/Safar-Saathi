@@ -36,7 +36,7 @@ CREATE POLICY "Allow scoped read of SOS alerts" ON public.sos_alerts
             AND EXISTS (
                 SELECT 1 FROM public.trips
                 WHERE trips.id = sos_alerts.trip_id
-                  AND trips.created_by = auth.uid()
+                  AND trips.guide_id = auth.uid()
             )
         )
         OR EXISTS (
@@ -55,7 +55,7 @@ CREATE POLICY "Allow guide and authority to update SOS status" ON public.sos_ale
             AND EXISTS (
                 SELECT 1 FROM public.trips
                 WHERE trips.id = sos_alerts.trip_id
-                  AND trips.created_by = auth.uid()
+                  AND trips.guide_id = auth.uid()
             )
         )
         OR EXISTS (
