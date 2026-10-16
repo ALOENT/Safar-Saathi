@@ -6,21 +6,41 @@ import {
   AlertTriangle,
   ShieldCheck,
   MapPin,
-  CheckCircle2,
   Clock,
   Phone,
   Radio,
+  Hourglass,
+  CheckCircle2,
 } from 'lucide-react'
+
+// ── Relative time helper ──────────────────────────────────────────────────────
+const timeAgo = (iso) => {
+  if (!iso) return ''
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diff < 5) return 'just now'
+  if (diff < 60) return `${diff}s ago`
+  const m = Math.floor(diff / 60)
+  if (m < 60) return `${m} min ago`
+  return `${Math.floor(m / 60)} hr ago`
+}
+
+const formatTime = (dateStr) =>
+  new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+const formatDate = (dateStr) => {
+  const d = new Date(dateStr)
+  if (d.toDateString() === new Date().toDateString()) return 'Today'
+  return d.toLocaleDateString([], { day: 'numeric', month: 'short' })
+}
 
 export const SOSDeskPage = () => {
   const { profile } = useAuth()
-  const { alerts, resolveAlert } = useSOS()
+  const { alerts, guideResolveAlert } = useSOS()
   const navigate = useNavigate()
 
-  const role = profile?.role
-  const isGuide = role === 'guide'
-
-  const activeAlerts = alerts.filter((a) => a.status === 'active' || a.status === 'acknowledged')
+  // Separate active vs waiting-for-authority
+  const activeAlerts   = alerts.filter((a) => a.status === 'active' || a.status === 'acknowledged')
+  const waitingAlerts  = alerts.filter((a) => a.status === 'guide_resolved')
 
   const handleViewOnMap = (alert) => {
     if (alert.lat && alert.lng) {
@@ -29,36 +49,20 @@ export const SOSDeskPage = () => {
     }
   }
 
-  const handleResolve = async (alertId) => {
-    await resolveAlert(alertId)
-  }
-
-  const formatTime = (dateStr) => {
-    const d = new Date(dateStr)
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
-
-  const formatDate = (dateStr) => {
-    const d = new Date(dateStr)
-    const now = new Date()
-    if (d.toDateString() === now.toDateString()) return 'Today'
-    return d.toLocaleDateString([], { day: 'numeric', month: 'short' })
+  const handleGuideResolve = async (alertId) => {
+    await guideResolveAlert(alertId)
   }
 
   return (
-    <div className="pb-safe max-w-md mx-auto px-4 py-4 space-y-4">
+    <div className="pb-28 max-w-md mx-auto px-4 py-4 space-y-4">
       {/* Header */}
       <div className="flex items-center space-x-3 bg-gradient-to-r from-red-950 to-slate-900 border border-red-800/50 p-4 rounded-2xl shadow-lg">
         <div className="p-2.5 bg-red-950/80 rounded-xl text-red-400 border border-red-700/50">
           <AlertTriangle className="w-5 h-5" />
         </div>
         <div className="flex-1">
-          <h2 className="text-base font-bold text-white">
-            {isGuide ? 'SOS Emergency Desk' : 'Emergency Alert Center'}
-          </h2>
-          <p className="text-xs text-slate-400">
-            {isGuide ? 'Realtime alerts from your group' : 'All active traveler emergencies'}
-          </p>
+          <h2 className="text-base font-bold text-white">SOS Emergency Desk</h2>
+          <p className="text-xs text-slate-400">Realtime alerts from your group</p>
         </div>
         <div className="flex items-center space-x-1.5 bg-slate-950 border border-red-800/40 px-2.5 py-1 rounded-full">
           <Radio className="w-3 h-3 text-red-400 animate-pulse" />
@@ -80,14 +84,14 @@ export const SOSDeskPage = () => {
         </span>
       </div>
 
-      {/* Alerts list */}
-      {activeAlerts.length === 0 ? (
+      {/* ── Active alerts list ─────────────────────────────────────────── */}
+      {activeAlerts.length === 0 && waitingAlerts.length === 0 ? (
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center space-y-3">
           <ShieldCheck className="w-10 h-10 text-emerald-500 mx-auto" />
           <div>
             <h3 className="text-sm font-bold text-white">All Clear</h3>
             <p className="text-xs text-slate-400 mt-1">
-              No active SOS emergencies. New alerts will appear here instantly via realtime broadcast.
+              No active SOS emergencies. New alerts will appear here instantly.
             </p>
           </div>
         </div>
@@ -103,10 +107,10 @@ export const SOSDeskPage = () => {
                 key={alert.id}
                 className="bg-slate-900/90 border border-red-900/60 rounded-2xl p-4 space-y-3 shadow-lg relative overflow-hidden"
               >
-                {/* Red glow accent */}
-                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-500 to-red-800 rounded-l-2xl"></div>
+                {/* Red accent bar */}
+                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-500 to-red-800 rounded-l-2xl" />
 
-                {/* Alert header */}
+                {/* Header */}
                 <div className="flex items-start justify-between pl-2">
                   <div className="space-y-0.5">
                     <div className="flex items-center space-x-2">
@@ -127,13 +131,12 @@ export const SOSDeskPage = () => {
                     )}
                   </div>
 
-                  {/* Pulsing emergency indicator */}
                   <div className="p-2 bg-red-950/80 rounded-xl border border-red-800/50">
                     <AlertTriangle className="w-5 h-5 text-red-500 animate-bounce" />
                   </div>
                 </div>
 
-                {/* Location info */}
+                {/* Location */}
                 {hasLocation && (
                   <div className="bg-slate-950/80 rounded-xl px-3 py-2 flex items-center space-x-2 border border-slate-800 ml-2">
                     <MapPin className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
@@ -143,7 +146,7 @@ export const SOSDeskPage = () => {
                   </div>
                 )}
 
-                {/* Action buttons */}
+                {/* Actions */}
                 <div className="flex space-x-2 pl-2">
                   {hasLocation && (
                     <button
@@ -155,13 +158,54 @@ export const SOSDeskPage = () => {
                     </button>
                   )}
                   <button
-                    onClick={() => handleResolve(alert.id)}
+                    onClick={() => handleGuideResolve(alert.id)}
                     className="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 active:scale-95 transition-all"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Mark Resolved</span>
+                    <span>Traveler is safe</span>
                   </button>
                 </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Waiting for authority confirmation section ─────────────────── */}
+      {waitingAlerts.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2 px-1">
+            <Hourglass className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs font-bold text-amber-400 uppercase tracking-wide">
+              Waiting for Authority Confirmation
+            </span>
+            <span className="text-[10px] bg-amber-950 text-amber-400 border border-amber-700 px-2 py-0.5 rounded-full font-bold">
+              {waitingAlerts.length}
+            </span>
+          </div>
+
+          {waitingAlerts.map((alert) => {
+            const personName = alert.profiles?.name || 'Unknown Traveler'
+            return (
+              <div
+                key={alert.id}
+                className="bg-slate-900/70 border border-amber-800/30 rounded-2xl px-4 py-3 relative overflow-hidden flex items-center justify-between"
+              >
+                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-amber-500 to-amber-800 rounded-l-2xl" />
+                <div className="pl-2 space-y-0.5">
+                  <div className="flex items-center space-x-2">
+                    <span className="bg-amber-950 text-amber-400 border border-amber-700/60 px-2 py-0.5 rounded-md text-[9px] font-black uppercase">
+                      Guide Safe
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-white">{personName}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {alert.guide_resolved_at
+                      ? `Marked safe ${timeAgo(alert.guide_resolved_at)}`
+                      : 'Pending authority review'}
+                  </p>
+                </div>
+                <Hourglass className="w-5 h-5 text-amber-400/60 shrink-0" />
               </div>
             )
           })}

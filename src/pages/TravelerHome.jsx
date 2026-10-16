@@ -29,15 +29,19 @@ function approxDist(a, b) {
 export const TravelerHome = () => {
   const { profile } = useAuth()
   const { currentTrip, isSolo, members } = useTrip()
-  const { sendSOS, sending, lastSentAlert, clearLastSent } = useSOS()
+  const { sendSOS, sending, lastSentAlert, clearLastSent, myAlertStatus, clearMyAlertStatus } = useSOS()
   const { myLocation } = useLocation()
   const navigate = useNavigate()
   const [copied, setCopied] = React.useState(false)
 
   // SOS countdown state
-  const [countdown, setCountdown] = useState(null) // null = idle, 3/2/1 = counting
+  const [countdown, setCountdown] = useState(null)
   const countdownRef = useRef(null)
   const [sosError, setSosError] = useState(null)
+
+  // Toast when own alert is marked safe by guide / authority
+  const [sosResolutionToast, setSosResolutionToast] = useState(false)
+  const prevAlertStatus = useRef(null)
 
   // ── Safety score state ──────────────────────────────────────────────────────
   const [safetyResult, setSafetyResult] = useState({ score: 100, level: 'low', reasons: [] })
@@ -182,10 +186,47 @@ export const TravelerHome = () => {
     return () => clearTimeout(timer)
   }, [lastSentAlert])
 
+  // ── Show toast when own alert becomes guide_resolved / resolved ───────────
+  useEffect(() => {
+    if (
+      myAlertStatus &&
+      (myAlertStatus === 'guide_resolved' || myAlertStatus === 'resolved') &&
+      prevAlertStatus.current !== myAlertStatus
+    ) {
+      prevAlertStatus.current = myAlertStatus
+      setSosResolutionToast(true)
+      // Also clear lastSentAlert so the SOS box resets
+      clearLastSent()
+      setTimeout(() => {
+        setSosResolutionToast(false)
+        clearMyAlertStatus()
+      }, 5000)
+    } else {
+      prevAlertStatus.current = myAlertStatus
+    }
+  }, [myAlertStatus])
+
   const isCountingDown = countdown !== null && countdown > 0
 
   return (
     <div className="pb-safe max-w-md mx-auto px-4 py-4 space-y-5">
+      {/* ── SOS resolution toast ───────────────────────────────────────── */}
+      {sosResolutionToast && (
+        <div className="bg-emerald-900 border border-emerald-600 text-emerald-100 px-4 py-3 rounded-2xl
+          flex items-center space-x-3 shadow-xl animate-bounce">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-bold">Your SOS was marked safe ✅</p>
+            <p className="text-xs text-emerald-300">Guide and/or authority have confirmed you're okay.</p>
+          </div>
+          <button
+            onClick={() => { setSosResolutionToast(false); clearMyAlertStatus() }}
+            className="text-emerald-400 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       {/* Welcome Header */}
       <div className="bg-gradient-to-br from-emerald-900 to-emerald-950 rounded-2xl p-5 border border-emerald-800/80 shadow-xl space-y-3 relative overflow-hidden">
         <div className="absolute top-0 right-0 transform translate-x-4 -translate-y-4 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>

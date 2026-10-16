@@ -50,7 +50,7 @@ export const Navbar = () => {
       </header>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-emerald-950/95 backdrop-blur-xl border-t border-emerald-900/80 px-2 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+      <nav className="fixed bottom-0 left-0 right-0 z-[1000] bg-emerald-950/95 backdrop-blur-xl border-t border-emerald-900/80 px-2 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
         <div className="max-w-md mx-auto flex justify-around items-center">
           {navItems.map((item) => {
             const Icon = item.icon
