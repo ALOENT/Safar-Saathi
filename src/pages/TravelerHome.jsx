@@ -1,14 +1,36 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTrip } from '../context/TripContext'
 import { useSOS } from '../context/SOSContext'
+import { useLocation } from '../context/LocationContext'
 import { Shield, AlertTriangle, Compass, MapPin, Copy, Check, UserCheck, X, CheckCircle2 } from 'lucide-react'
+import { computeSafetyScore } from '../lib/safetyScore'
+import { getWeatherCode } from '../lib/weatherCache'
+import { SafetyScoreWidget } from '../components/SafetyScoreWidget'
+import { supabase } from '../lib/supabase'
+
+const SCORE_INTERVAL_MS   = 60 * 1000  // recalculate every 60 seconds
+const LOCATION_DELTA_M    = 50          // significant movement threshold
+const WEATHER_INTERVAL_MS = 10 * 60 * 1000 // already handled by weatherCache
+
+// Haversine inline (avoid circular import) – only used for delta check
+function approxDist(a, b) {
+  if (!a || !b) return Infinity
+  const R = 6371000
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const sinLat = Math.sin(dLat / 2)
+  const sinLng = Math.sin(dLng / 2)
+  const aa = sinLat * sinLat + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * sinLng * sinLng
+  return R * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa))
+}
 
 export const TravelerHome = () => {
   const { profile } = useAuth()
-  const { currentTrip, isSolo } = useTrip()
+  const { currentTrip, isSolo, members } = useTrip()
   const { sendSOS, sending, lastSentAlert, clearLastSent } = useSOS()
+  const { myLocation } = useLocation()
   const navigate = useNavigate()
   const [copied, setCopied] = React.useState(false)
 
@@ -17,6 +39,92 @@ export const TravelerHome = () => {
   const countdownRef = useRef(null)
   const [sosError, setSosError] = useState(null)
 
+  // ── Safety score state ──────────────────────────────────────────────────────
+  const [safetyResult, setSafetyResult] = useState({ score: 100, level: 'low', reasons: [] })
+  const [scoreLoading, setScoreLoading] = useState(true)
+  const lastScoreLocRef = useRef(null)
+  const weatherCodeRef  = useRef(null)
+
+  // ── Fetch group member locations from Supabase for centroid calc ──────────
+  const fetchGroupLocations = useCallback(async () => {
+    if (!currentTrip?.id) return []
+    try {
+      const { data, error } = await supabase
+        .from('locations')
+        .select('lat, lng, user_id')
+        .eq('trip_id', currentTrip.id)
+      if (error || !data) return []
+      return data.filter((r) => typeof r.lat === 'number' && typeof r.lng === 'number')
+    } catch {
+      return []
+    }
+  }, [currentTrip?.id])
+
+  // ── Core recalculate function ──────────────────────────────────────────────
+  const recalculate = useCallback(async (forcedLoc) => {
+    const loc = forcedLoc || myLocation
+    if (!loc) {
+      // No location yet – return default safe-ish score
+      setSafetyResult({ score: 85, level: 'low', reasons: [] })
+      setScoreLoading(false)
+      return
+    }
+
+    setScoreLoading(true)
+    try {
+      // Fetch weather (cached for 10 min)
+      const wCode = await getWeatherCode(loc.lat, loc.lng)
+      weatherCodeRef.current = wCode
+
+      // Fetch group member locations for centroid
+      const groupLocations = await fetchGroupLocations()
+
+      const result = computeSafetyScore({
+        lat: loc.lat,
+        lng: loc.lng,
+        groupLocations: groupLocations.length > 0 ? groupLocations : myLocation ? [myLocation] : [],
+        isSolo,
+        weatherCode: wCode,
+        now: new Date(),
+      })
+
+      setSafetyResult(result)
+    } catch (err) {
+      console.warn('[SafetyScore] Recalc error:', err)
+    } finally {
+      setScoreLoading(false)
+    }
+  }, [myLocation, isSolo, fetchGroupLocations])
+
+  // ── Initial calculation on mount ───────────────────────────────────────────
+  useEffect(() => {
+    recalculate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Recalculate every 60 seconds ───────────────────────────────────────────
+  useEffect(() => {
+    const timer = setInterval(() => recalculate(), SCORE_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [recalculate])
+
+  // ── Recalculate when location changes significantly ────────────────────────
+  useEffect(() => {
+    if (!myLocation) return
+    const dist = approxDist(lastScoreLocRef.current, myLocation)
+    if (dist > LOCATION_DELTA_M) {
+      lastScoreLocRef.current = myLocation
+      recalculate(myLocation)
+    }
+  }, [myLocation, recalculate])
+
+  // ── Recalculate when isSolo / trip changes ─────────────────────────────────
+  useEffect(() => {
+    recalculate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSolo, currentTrip?.id])
+
+  // ── Copy trip code ─────────────────────────────────────────────────────────
   const handleCopyCode = () => {
     if (!currentTrip?.code) return
     navigator.clipboard.writeText(currentTrip.code)
@@ -45,14 +153,16 @@ export const TravelerHome = () => {
     if (countdown === null) return
 
     if (countdown === 0) {
-      // Fire SOS and inspect result
-      const result = await sendSOS()
-      setCountdown(null)
-      if (result?.error) {
-        setSosError('SOS failed to send. Tap to try again.')
-      } else {
-        setSosError(null)
-      }
+      // Fire SOS
+      ;(async () => {
+        const result = await sendSOS()
+        setCountdown(null)
+        if (result?.error) {
+          setSosError('SOS failed to send. Tap to try again.')
+        } else {
+          setSosError(null)
+        }
+      })()
       return
     }
 
@@ -93,9 +203,17 @@ export const TravelerHome = () => {
         {/* Status Indicator */}
         <div className="inline-flex items-center space-x-2 bg-emerald-950/90 px-3 py-1.5 rounded-full border border-emerald-600/40 text-xs text-emerald-300">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>Status: Safe & Monitored</span>
+          <span>Status: Safe &amp; Monitored</span>
         </div>
       </div>
+
+      {/* ── Safety Score Widget ── */}
+      <SafetyScoreWidget
+        score={safetyResult.score}
+        level={safetyResult.level}
+        reasons={safetyResult.reasons}
+        loading={scoreLoading}
+      />
 
       {/* Active Trip / Solo Banner */}
       {currentTrip ? (
@@ -165,7 +283,6 @@ export const TravelerHome = () => {
           : 'bg-slate-900/90 border-red-900/50'
       }`}>
         {lastSentAlert ? (
-          /* ── SOS Sent Confirmation ── */
           <>
             <div className="inline-flex p-3 bg-emerald-900/60 rounded-full border border-emerald-600">
               <CheckCircle2 className="w-8 h-8 text-emerald-400" />
@@ -184,10 +301,8 @@ export const TravelerHome = () => {
             </button>
           </>
         ) : isCountingDown ? (
-          /* ── Countdown Active ── */
           <>
             <div className="relative inline-flex items-center justify-center w-24 h-24">
-              {/* Pulsing ring */}
               <div className="absolute inset-0 rounded-full bg-red-600/20 animate-ping"></div>
               <div className="relative w-20 h-20 rounded-full bg-red-900/80 border-4 border-red-500 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.5)]">
                 <span className="text-4xl font-black text-white">{countdown}</span>
@@ -206,14 +321,13 @@ export const TravelerHome = () => {
             </button>
           </>
         ) : (
-          /* ── Default SOS Button ── */
           <>
             <div className="inline-flex p-3 bg-red-950/80 rounded-full border border-red-800/50">
               <AlertTriangle className="w-8 h-8 text-red-500 animate-bounce" />
             </div>
             <div>
               <h3 className="text-base font-bold text-white">Emergency SOS Alert</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Press to trigger instant location alert to Guide & Authorities</p>
+              <p className="text-xs text-slate-400 mt-0.5">Press to trigger instant location alert to Guide &amp; Authorities</p>
             </div>
             {sosError && (
               <p className="text-xs text-red-300 bg-red-950/60 border border-red-700/50 rounded-lg px-3 py-2">
@@ -242,7 +356,7 @@ export const TravelerHome = () => {
             <Compass className="w-5 h-5" />
           </div>
           <span className="text-xs font-semibold text-slate-200">My Trip</span>
-          <span className="text-[10px] text-slate-400">View code & members</span>
+          <span className="text-[10px] text-slate-400">View code &amp; members</span>
         </button>
 
         <button

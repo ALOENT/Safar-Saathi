@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Circle, Tooltip, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import riskZonesData from '../data/riskZones.json'
 import {
   MapPin,
   Navigation,
@@ -484,6 +485,32 @@ export const MapPage = () => {
               </Marker>
             )
           })}
+
+          {/* Risk Zone Circles */}
+          {riskZonesData.map((zone) => (
+            <Circle
+              key={zone.id}
+              center={[zone.lat, zone.lng]}
+              radius={zone.radius}
+              pathOptions={{
+                color: '#ef4444',
+                fillColor: '#ef4444',
+                fillOpacity: 0.12,
+                weight: 2,
+                dashArray: '6 4',
+              }}
+            >
+              <Tooltip direction="top" sticky>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#b91c1c' }}>
+                  ⚠️ {zone.name}
+                </div>
+                <div style={{ fontSize: '11px', color: '#555', marginTop: '2px' }}>
+                  {zone.description}
+                </div>
+              </Tooltip>
+            </Circle>
+          ))}
+
         </MapContainer>
 
         {/* Floating Controls over Map */}

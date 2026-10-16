@@ -21,3 +21,5 @@ dist-isolation
 *.njsproj
 *.sln
 *.sw?
+
+dev-dist
