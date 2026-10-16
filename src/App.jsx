@@ -3,8 +3,10 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { TripProvider } from './context/TripContext'
 import { LocationProvider } from './context/LocationContext'
+import { SOSProvider } from './context/SOSContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Navbar } from './components/Navbar'
+import { SOSAlertBanner } from './components/SOSAlertBanner'
 import { ROLE_HOMES } from './config/navConfig'
 
 import { AuthPage } from './pages/AuthPage'
@@ -15,9 +17,8 @@ import { AuthorityHome } from './pages/AuthorityHome'
 import { TripsPage } from './pages/TripsPage'
 import { MapPage } from './pages/MapPage'
 import { AlertsPage } from './pages/AlertsPage'
+import { SOSDeskPage } from './pages/SOSDeskPage'
 import { ProfilePage } from './pages/ProfilePage'
-import { PlaceholderPage } from './pages/PlaceholderPage'
-import { AlertTriangle } from 'lucide-react'
 
 const AppRoutes = () => {
   const { user, profile } = useAuth()
@@ -31,6 +32,7 @@ const AppRoutes = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <Navbar />
+      <SOSAlertBanner />
       <main className="flex-1">
         <Routes>
           <Route
@@ -77,7 +79,7 @@ const AppRoutes = () => {
             path="/sos"
             element={
               <ProtectedRoute allowedRoles={['guide']}>
-                <PlaceholderPage title="Guide Emergency SOS Desk" icon={AlertTriangle} />
+                <SOSDeskPage />
               </ProtectedRoute>
             }
           />
@@ -132,10 +134,13 @@ export default function App() {
       <AuthProvider>
         <TripProvider>
           <LocationProvider>
-            <AppRoutes />
+            <SOSProvider>
+              <AppRoutes />
+            </SOSProvider>
           </LocationProvider>
         </TripProvider>
       </AuthProvider>
     </Router>
   )
 }
+

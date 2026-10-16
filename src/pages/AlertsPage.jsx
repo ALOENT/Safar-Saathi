@@ -1,7 +1,17 @@
 import React from 'react'
-import { Bell, ShieldAlert, CheckCircle2 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { SOSDeskPage } from './SOSDeskPage'
+import { Bell, CheckCircle2 } from 'lucide-react'
 
 export const AlertsPage = () => {
+  const { profile } = useAuth()
+
+  // Authority sees the full SOS desk on their Alerts tab
+  if (profile?.role === 'authority') {
+    return <SOSDeskPage />
+  }
+
+  // Traveler sees the standard alerts page
   return (
     <div className="pb-safe max-w-md mx-auto px-4 py-4 space-y-4">
       <div className="flex items-center space-x-3 bg-slate-900/90 border border-slate-800 p-4 rounded-2xl">
@@ -26,3 +36,4 @@ export const AlertsPage = () => {
     </div>
   )
 }
+

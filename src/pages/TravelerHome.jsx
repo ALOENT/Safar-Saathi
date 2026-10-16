@@ -1,14 +1,20 @@
-import React from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTrip } from '../context/TripContext'
-import { Shield, AlertTriangle, Compass, MapPin, Copy, Check, Users, UserCheck } from 'lucide-react'
+import { useSOS } from '../context/SOSContext'
+import { Shield, AlertTriangle, Compass, MapPin, Copy, Check, UserCheck, X, CheckCircle2 } from 'lucide-react'
 
 export const TravelerHome = () => {
   const { profile } = useAuth()
   const { currentTrip, isSolo } = useTrip()
+  const { sendSOS, sending, lastSentAlert, clearLastSent } = useSOS()
   const navigate = useNavigate()
   const [copied, setCopied] = React.useState(false)
+
+  // SOS countdown state
+  const [countdown, setCountdown] = useState(null) // null = idle, 3/2/1 = counting
+  const countdownRef = useRef(null)
 
   const handleCopyCode = () => {
     if (!currentTrip?.code) return
@@ -16,6 +22,50 @@ export const TravelerHome = () => {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  // Start 3-second countdown
+  const handleSOSPress = () => {
+    if (countdown !== null || sending) return
+    setCountdown(3)
+  }
+
+  // Cancel countdown
+  const handleCancelSOS = () => {
+    setCountdown(null)
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current)
+      countdownRef.current = null
+    }
+  }
+
+  // Run countdown timer
+  useEffect(() => {
+    if (countdown === null) return
+
+    if (countdown === 0) {
+      // Fire SOS
+      sendSOS()
+      setCountdown(null)
+      return
+    }
+
+    countdownRef.current = setTimeout(() => {
+      setCountdown((prev) => (prev !== null ? prev - 1 : null))
+    }, 1000)
+
+    return () => {
+      if (countdownRef.current) clearTimeout(countdownRef.current)
+    }
+  }, [countdown])
+
+  // Auto-dismiss confirmation after 5 seconds
+  useEffect(() => {
+    if (!lastSentAlert) return
+    const timer = setTimeout(() => clearLastSent(), 5000)
+    return () => clearTimeout(timer)
+  }, [lastSentAlert])
+
+  const isCountingDown = countdown !== null && countdown > 0
 
   return (
     <div className="pb-safe max-w-md mx-auto px-4 py-4 space-y-5">
@@ -100,21 +150,74 @@ export const TravelerHome = () => {
       )}
 
       {/* SOS Quick Trigger Box */}
-      <div className="bg-slate-900/90 border border-red-900/50 rounded-2xl p-5 text-center space-y-3 shadow-lg">
-        <div className="inline-flex p-3 bg-red-950/80 rounded-full border border-red-800/50">
-          <AlertTriangle className="w-8 h-8 text-red-500 animate-bounce" />
-        </div>
-        <div>
-          <h3 className="text-base font-bold text-white">Emergency SOS Alert</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Press to trigger instant location alert to Guide & Authorities</p>
-        </div>
-        <button
-          onClick={() => alert('SOS Alert Triggered! (Full realtime broadcast enabled in Stage 4)')}
-          className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-extrabold py-3.5 px-4 rounded-xl shadow-xl shadow-red-950/80 active:scale-95 transition-all text-sm uppercase tracking-wider flex items-center justify-center space-x-2"
-        >
-          <AlertTriangle className="w-5 h-5" />
-          <span>TRIGGER SOS EMERGENCY</span>
-        </button>
+      <div className={`rounded-2xl p-5 text-center space-y-3 shadow-lg border transition-all duration-300 ${
+        isCountingDown
+          ? 'bg-red-950/95 border-red-600 shadow-[0_0_30px_rgba(239,68,68,0.3)]'
+          : lastSentAlert
+          ? 'bg-emerald-950/90 border-emerald-700'
+          : 'bg-slate-900/90 border-red-900/50'
+      }`}>
+        {lastSentAlert ? (
+          /* ── SOS Sent Confirmation ── */
+          <>
+            <div className="inline-flex p-3 bg-emerald-900/60 rounded-full border border-emerald-600">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">✅ SOS Alert Sent!</h3>
+              <p className="text-xs text-emerald-300 mt-0.5">
+                Your emergency signal has been broadcast to {currentTrip ? 'your guide and' : ''} local authorities.
+              </p>
+            </div>
+            <button
+              onClick={clearLastSent}
+              className="text-xs text-slate-400 underline hover:text-slate-200"
+            >
+              Dismiss
+            </button>
+          </>
+        ) : isCountingDown ? (
+          /* ── Countdown Active ── */
+          <>
+            <div className="relative inline-flex items-center justify-center w-24 h-24">
+              {/* Pulsing ring */}
+              <div className="absolute inset-0 rounded-full bg-red-600/20 animate-ping"></div>
+              <div className="relative w-20 h-20 rounded-full bg-red-900/80 border-4 border-red-500 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.5)]">
+                <span className="text-4xl font-black text-white">{countdown}</span>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Sending SOS in {countdown}...</h3>
+              <p className="text-xs text-red-200 mt-0.5">Press cancel to abort</p>
+            </div>
+            <button
+              onClick={handleCancelSOS}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-xl border border-slate-600 flex items-center justify-center space-x-2 text-sm active:scale-95 transition-all"
+            >
+              <X className="w-5 h-5" />
+              <span>CANCEL</span>
+            </button>
+          </>
+        ) : (
+          /* ── Default SOS Button ── */
+          <>
+            <div className="inline-flex p-3 bg-red-950/80 rounded-full border border-red-800/50">
+              <AlertTriangle className="w-8 h-8 text-red-500 animate-bounce" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Emergency SOS Alert</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Press to trigger instant location alert to Guide & Authorities</p>
+            </div>
+            <button
+              onClick={handleSOSPress}
+              disabled={sending}
+              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-extrabold py-3.5 px-4 rounded-xl shadow-xl shadow-red-950/80 active:scale-95 transition-all text-sm uppercase tracking-wider flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              <AlertTriangle className="w-5 h-5" />
+              <span>TRIGGER SOS EMERGENCY</span>
+            </button>
+          </>
+        )}
       </div>
 
       {/* Quick Action Grid */}
