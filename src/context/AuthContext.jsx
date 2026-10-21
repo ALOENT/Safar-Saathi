@@ -123,13 +123,14 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error
 
+      let userProfile = null
       if (data.user) {
         setUser(data.user)
-        const userProfile = await fetchProfile(data.user.id)
+        userProfile = await fetchProfile(data.user.id)
         setProfile(userProfile)
       }
 
-      return { data, error: null }
+      return { data: { ...data, profile: userProfile }, error: null }
     } catch (err) {
       return { data: null, error: err }
     } finally {

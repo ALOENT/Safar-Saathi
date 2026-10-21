@@ -1,26 +1,28 @@
-import React, { useEffect } from 'react'
+import React from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useSOS } from '../context/SOSContext'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import { SOSDeskPage } from './SOSDeskPage'
-import { Bell, CheckCircle2, AlertTriangle, Clock, MapPin, CheckCircle } from 'lucide-react'
+import {
+  Bell, CheckCircle2, AlertTriangle, Clock, MapPin, CheckCircle, Crown,
+} from 'lucide-react'
 
-// ── Status helpers ──────────────────────────────────────────────────────────
-const statusBadge = {
+// ── Status helpers ────────────────────────────────────────────────────────────
+const STATUS_BADGE = {
   active:         'bg-red-950 border-red-700 text-red-300',
   acknowledged:   'bg-amber-950 border-amber-700 text-amber-300',
   guide_resolved: 'bg-blue-950 border-blue-700 text-blue-300',
   resolved:       'bg-emerald-950 border-emerald-700 text-emerald-300',
 }
-
-const statusLabel = {
+const STATUS_LABEL = {
   active:         '🚨 Active',
   acknowledged:   '👁 Acknowledged',
-  guide_resolved: '✅ Guide Resolved',
+  guide_resolved: '✅ Guide Marked Safe',
   resolved:       '✔ Resolved',
 }
 
-const AlertRow = ({ alert }) => {
+// ── My own SOS row ────────────────────────────────────────────────────────────
+const MyAlertRow = ({ alert }) => {
   const alertTime = new Date(alert.created_at).toLocaleString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   })
@@ -28,8 +30,8 @@ const AlertRow = ({ alert }) => {
   return (
     <div className={`bg-slate-900/80 border rounded-2xl p-4 space-y-2 ${st === 'active' ? 'border-red-900/60' : 'border-slate-800'}`}>
       <div className="flex items-center justify-between">
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${statusBadge[st] || 'bg-slate-800 border-slate-700 text-slate-300'}`}>
-          {statusLabel[st] || st}
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_BADGE[st] || 'bg-slate-800 border-slate-700 text-slate-300'}`}>
+          {STATUS_LABEL[st] || st}
         </span>
         <span className="text-[10px] text-slate-500 flex items-center space-x-1">
           <Clock className="w-2.5 h-2.5" /><span>{alertTime}</span>
@@ -45,9 +47,10 @@ const AlertRow = ({ alert }) => {
   )
 }
 
-const GuideSosRow = ({ alert }) => {
+// ── Trip alert row (guide sees this for their members) ────────────────────────
+const TripAlertRow = ({ alert }) => {
   const personName = alert.profiles?.name || 'Unknown Traveler'
-  const alertTime = new Date(alert.created_at).toLocaleString([], {
+  const alertTime  = new Date(alert.created_at).toLocaleString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   })
   const st = alert.status || 'active'
@@ -55,8 +58,8 @@ const GuideSosRow = ({ alert }) => {
     <div className={`bg-slate-900/80 border rounded-2xl p-4 space-y-2 ${st === 'active' ? 'border-red-900/60' : 'border-slate-800'}`}>
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold text-white">{personName}</span>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${statusBadge[st] || 'bg-slate-800 border-slate-700 text-slate-300'}`}>
-          {statusLabel[st] || st}
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_BADGE[st] || 'bg-slate-800 border-slate-700 text-slate-300'}`}>
+          {STATUS_LABEL[st] || st}
         </span>
       </div>
       <span className="text-[10px] text-slate-500 flex items-center space-x-1">
@@ -72,65 +75,74 @@ const GuideSosRow = ({ alert }) => {
   )
 }
 
+// ── Empty state ───────────────────────────────────────────────────────────────
+const EmptyState = ({ text }) => (
+  <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center space-y-3">
+    <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+    <p className="text-xs text-slate-400">{text}</p>
+  </div>
+)
+
+// ── Main AlertsPage ───────────────────────────────────────────────────────────
 export const AlertsPage = () => {
   const { profile } = useAuth()
-  const { isGuide } = useActiveTrip()
-  const { alerts, fetchAlerts } = useSOS()
+  const { isGuide, trip } = useActiveTrip()
+  // `alerts`      = guide's or authority's active trip alerts
+  // `myOwnAlerts` = this user's own SOS sends
+  const { alerts: tripAlerts, myOwnAlerts } = useSOS()
 
   // Authority always sees the full SOS desk
   if (profile?.role === 'authority') {
     return <SOSDeskPage />
   }
 
-  // Split: my own alerts vs. alerts from the trip I guide
-  const myAlerts = alerts.filter((a) => !a.profiles || !isGuide)
-  const guideAlerts = isGuide ? alerts.filter((a) => a.profiles) : []
-
+  // Guide sees their own history + all trip member alerts
+  // Regular traveler sees only their own history
   return (
     <div className="pb-safe max-w-md mx-auto px-4 py-4 space-y-5">
+
       {/* Header */}
       <div className="flex items-center space-x-3 bg-slate-900/90 border border-slate-800 p-4 rounded-2xl">
         <div className="p-2.5 bg-emerald-950 rounded-xl text-emerald-400 border border-emerald-800">
           <Bell className="w-5 h-5" />
         </div>
         <div>
-          <h2 className="text-base font-bold text-white">Emergency Alerts &amp; History</h2>
-          <p className="text-xs text-slate-400">Your SOS history{isGuide ? ' + your trip alerts' : ''}</p>
+          <h2 className="text-base font-bold text-white">Alerts &amp; History</h2>
+          <p className="text-xs text-slate-400">
+            {isGuide ? 'My SOS history + my trip alerts' : 'My SOS history'}
+          </p>
         </div>
       </div>
 
-      {/* My own SOS history */}
+      {/* ── My own SOS history ── */}
       <div className="space-y-3">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">My SOS History</h3>
-        {alerts.length === 0 ? (
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center space-y-3">
-            <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-            <div>
-              <h3 className="text-sm font-bold text-white">No SOS Alerts Sent</h3>
-              <p className="text-xs text-slate-400 mt-1">Your emergency history will appear here.</p>
-            </div>
-          </div>
+        {myOwnAlerts.length === 0 ? (
+          <EmptyState text="You haven't sent any SOS alerts. Your emergency history will appear here." />
         ) : (
-          alerts
-            .filter((a) => !isGuide || !a.profiles?.name) // Show all own alerts
-            .map((a) => <AlertRow key={a.id} alert={a} />)
+          myOwnAlerts.map((a) => <MyAlertRow key={a.id} alert={a} />)
         )}
       </div>
 
-      {/* Guide: alerts from their trip */}
-      {isGuide && (
+      {/* ── Guide: alerts from trip members ── */}
+      {isGuide && trip && (
         <div className="space-y-3">
           <div className="flex items-center space-x-2">
             <AlertTriangle className="w-4 h-4 text-red-400" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Alerts from My Trip</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Alerts from My Trip
+            </h3>
+            <span className="flex items-center space-x-1 bg-amber-950/60 border border-amber-700/40 text-amber-300 text-[9px] font-bold px-2 py-0.5 rounded-full">
+              <Crown className="w-2.5 h-2.5" /><span>Guide</span>
+            </span>
           </div>
-          {guideAlerts.length === 0 ? (
+          {tripAlerts.length === 0 ? (
             <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 text-center">
               <CheckCircle className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
-              <p className="text-xs text-slate-400">No active SOS alerts in your trip.</p>
+              <p className="text-xs text-slate-400">No active SOS alerts in your trip. All travelers are safe.</p>
             </div>
           ) : (
-            guideAlerts.map((a) => <GuideSosRow key={a.id} alert={a} />)
+            tripAlerts.map((a) => <TripAlertRow key={a.id} alert={a} />)
           )}
         </div>
       )}

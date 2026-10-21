@@ -61,8 +61,8 @@ export const AuthPage = () => {
           return
         }
 
-        // Navigate based on loaded profile role
-        const role = data?.user?.user_metadata?.role || 'traveler'
+        // Navigate based on profile role (fetched from DB by signIn)
+        const role = data?.profile?.role || data?.user?.user_metadata?.role || 'traveler'
         if (role === 'authority') navigate('/authority')
         else navigate('/home')
       }

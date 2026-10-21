@@ -4,7 +4,7 @@ import { useSOS } from '../context/SOSContext'
 import { AlertTriangle, MapPin, CheckCircle2, X } from 'lucide-react'
 
 export const SOSAlertBanner = () => {
-  const { incomingAlert, dismissBanner, resolveAlert } = useSOS()
+  const { incomingAlert, dismissBanner, guideResolveAlert, resolveAlert, isGuide } = useSOS()
   const navigate = useNavigate()
   const [resolveError, setResolveError] = useState(null)
   const [resolving, setResolving] = useState(false)
@@ -12,9 +12,8 @@ export const SOSAlertBanner = () => {
   if (!incomingAlert) return null
 
   const personName = incomingAlert.profiles?.name || 'Unknown Traveler'
-  const alertTime = new Date(incomingAlert.created_at).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
+  const alertTime  = new Date(incomingAlert.created_at).toLocaleTimeString([], {
+    hour: '2-digit', minute: '2-digit',
   })
   const hasLocation = incomingAlert.lat && incomingAlert.lng
 
@@ -23,30 +22,32 @@ export const SOSAlertBanner = () => {
     navigate(`/map?sos_lat=${incomingAlert.lat}&sos_lng=${incomingAlert.lng}&sos_name=${encodeURIComponent(personName)}`)
   }
 
-  const handleResolve = async () => {
+  // Guide marks traveler safe; authority fully resolves
+  const handleAction = async () => {
     setResolveError(null)
     setResolving(true)
-    const result = await resolveAlert(incomingAlert.id)
+    const fn     = isGuide ? guideResolveAlert : resolveAlert
+    const result = await fn(incomingAlert.id)
     setResolving(false)
     if (result?.error) {
-      // Keep banner open, surface the error
-      setResolveError('Failed to resolve. Please try again.')
+      setResolveError('Failed. Please try again.')
     }
-    // On success resolveAlert calls dismissBanner internally — no extra action needed
   }
+
+  const actionLabel = isGuide ? 'Traveler is Safe ✓' : 'Mark Resolved'
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-red-950/95 backdrop-blur-md animate-pulse-slow">
-      {/* Pulsing red overlay rings */}
+      {/* Pulsing rings */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="w-80 h-80 rounded-full bg-red-600/10 animate-ping" style={{ animationDuration: '2s' }}></div>
+        <div className="w-80 h-80 rounded-full bg-red-600/10 animate-ping" style={{ animationDuration: '2s' }} />
       </div>
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="w-60 h-60 rounded-full bg-red-500/15 animate-ping" style={{ animationDuration: '1.5s' }}></div>
+        <div className="w-60 h-60 rounded-full bg-red-500/15 animate-ping" style={{ animationDuration: '1.5s' }} />
       </div>
 
       <div className="relative max-w-sm mx-auto px-6 text-center space-y-5">
-        {/* Close / dismiss */}
+        {/* Dismiss */}
         <button
           onClick={dismissBanner}
           className="absolute -top-2 right-2 p-2 text-red-300 hover:text-white transition-colors"
@@ -67,7 +68,7 @@ export const SOSAlertBanner = () => {
           <p className="text-red-200 text-xs mt-1 font-medium">Immediate attention required</p>
         </div>
 
-        {/* Details card */}
+        {/* Details */}
         <div className="bg-red-950/80 border border-red-700/60 rounded-2xl p-4 space-y-2 text-left">
           <div className="flex items-center justify-between">
             <span className="text-xs text-red-300 font-bold uppercase">Distress Signal</span>
@@ -98,12 +99,12 @@ export const SOSAlertBanner = () => {
             </p>
           )}
           <button
-            onClick={handleResolve}
+            onClick={handleAction}
             disabled={resolving}
             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-sm active:scale-95 transition-all disabled:opacity-60"
           >
             <CheckCircle2 className="w-5 h-5" />
-            <span>{resolving ? 'Resolving…' : 'Mark Resolved'}</span>
+            <span>{resolving ? 'Processing…' : actionLabel}</span>
           </button>
         </div>
       </div>
