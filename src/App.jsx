@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { TripProvider } from './context/TripContext'
 import { LocationProvider } from './context/LocationContext'
 import { SOSProvider } from './context/SOSContext'
+import { ToastProvider } from './context/ToastContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Navbar } from './components/Navbar'
 import { OnlineBanner } from './components/OnlineBanner'
@@ -11,20 +12,18 @@ import { SOSAlertBanner } from './components/SOSAlertBanner'
 import { ROLE_HOMES } from './config/navConfig'
 
 import { AuthPage } from './pages/AuthPage'
-import { TravelerHome } from './pages/TravelerHome'
-import { GuideHome } from './pages/GuideHome'
-import { GuideGroupPage } from './pages/GuideGroupPage'
+import { HomePage } from './pages/HomePage'
+import { TripPage } from './pages/TripPage'
 import { AuthorityHome } from './pages/AuthorityHome'
-import { TripsPage } from './pages/TripsPage'
 import { MapPage } from './pages/MapPage'
 import { AlertsPage } from './pages/AlertsPage'
-import { SOSDeskPage } from './pages/SOSDeskPage'
 import { ProfilePage } from './pages/ProfilePage'
+
+const USER_ROLES = ['traveler', 'guide']
 
 const AppRoutes = () => {
   const { user, profile } = useAuth()
 
-  // Default path helper
   const getRoleDefaultPath = () => {
     if (!user) return '/login'
     return ROLE_HOMES[profile?.role] || '/home'
@@ -37,56 +36,55 @@ const AppRoutes = () => {
       <SOSAlertBanner />
       <main className="flex-1">
         <Routes>
+          {/* Auth */}
           <Route
             path="/login"
             element={user ? <Navigate to={getRoleDefaultPath()} replace /> : <AuthPage />}
           />
 
-          {/* Traveler Routes */}
+          {/* ── User Routes (traveler + legacy guide) ── */}
           <Route
             path="/home"
             element={
-              <ProtectedRoute allowedRoles={['traveler']}>
-                <TravelerHome />
+              <ProtectedRoute allowedRoles={[...USER_ROLES]}>
+                <HomePage />
               </ProtectedRoute>
             }
           />
           <Route
-            path="/trips"
+            path="/trip"
             element={
-              <ProtectedRoute allowedRoles={['traveler']}>
-                <TripsPage />
+              <ProtectedRoute allowedRoles={[...USER_ROLES]}>
+                <TripPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/map"
+            element={
+              <ProtectedRoute allowedRoles={[...USER_ROLES, 'authority']}>
+                <MapPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/alerts"
+            element={
+              <ProtectedRoute allowedRoles={[...USER_ROLES, 'authority']}>
+                <AlertsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute allowedRoles={[...USER_ROLES, 'authority']}>
+                <ProfilePage />
               </ProtectedRoute>
             }
           />
 
-          {/* Guide Routes */}
-          <Route
-            path="/guide"
-            element={
-              <ProtectedRoute allowedRoles={['guide']}>
-                <GuideHome />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/group"
-            element={
-              <ProtectedRoute allowedRoles={['guide']}>
-                <GuideGroupPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/sos"
-            element={
-              <ProtectedRoute allowedRoles={['guide']}>
-                <SOSDeskPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Authority Routes */}
+          {/* ── Authority Route ── */}
           <Route
             path="/authority"
             element={
@@ -96,33 +94,13 @@ const AppRoutes = () => {
             }
           />
 
-          {/* Shared Routes */}
-          <Route
-            path="/alerts"
-            element={
-              <ProtectedRoute allowedRoles={['traveler', 'authority']}>
-                <AlertsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/map"
-            element={
-              <ProtectedRoute allowedRoles={['traveler', 'guide', 'authority']}>
-                <MapPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute allowedRoles={['traveler', 'guide', 'authority']}>
-                <ProfilePage />
-              </ProtectedRoute>
-            }
-          />
+          {/* ── Legacy redirects ── */}
+          <Route path="/guide"  element={<Navigate to="/home"  replace />} />
+          <Route path="/group"  element={<Navigate to="/trip"  replace />} />
+          <Route path="/sos"    element={<Navigate to="/trip"  replace />} />
+          <Route path="/trips"  element={<Navigate to="/trip"  replace />} />
 
-          {/* Fallback wildcard route */}
+          {/* ── Catch-all ── */}
           <Route path="*" element={<Navigate to={getRoleDefaultPath()} replace />} />
         </Routes>
       </main>
@@ -134,15 +112,16 @@ export default function App() {
   return (
     <Router>
       <AuthProvider>
-        <TripProvider>
-          <LocationProvider>
-            <SOSProvider>
-              <AppRoutes />
-            </SOSProvider>
-          </LocationProvider>
-        </TripProvider>
+        <ToastProvider>
+          <TripProvider>
+            <LocationProvider>
+              <SOSProvider>
+                <AppRoutes />
+              </SOSProvider>
+            </LocationProvider>
+          </TripProvider>
+        </ToastProvider>
       </AuthProvider>
     </Router>
   )
 }
-

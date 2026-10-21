@@ -20,7 +20,10 @@ export const TripProvider = ({ children }) => {
   const [isSolo, setIsSolo] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Fetch members for a specific trip
+  // ── Derived: is user the creator of the current trip? ────────────────────
+  const isGuide = !!(user && currentTrip && currentTrip.created_by === user.id)
+
+  // ── Fetch members for a trip ──────────────────────────────────────────────
   const fetchMembersForTrip = async (tripId) => {
     if (!tripId) return
 
@@ -54,7 +57,7 @@ export const TripProvider = ({ children }) => {
     }
   }
 
-  // Fetch active trip for user
+  // ── Fetch active trip for user ────────────────────────────────────────────
   const fetchActiveTrip = async () => {
     if (!user) {
       setCurrentTrip(null)
@@ -90,20 +93,27 @@ export const TripProvider = ({ children }) => {
       }
 
       if (memberRows && memberRows.length > 0) {
-        const activeTripId = memberRows[0].trip_id
+        // Find the active trip among all memberships
+        const tripIds = memberRows.map((r) => r.trip_id)
 
-        const { data: tripData, error: tripErr } = await supabase
+        const { data: tripsData, error: tripsErr } = await supabase
           .from('trips')
           .select('*')
-          .eq('id', activeTripId)
+          .in('id', tripIds)
+          .eq('is_active', true)
+          .limit(1)
           .maybeSingle()
 
-        if (tripErr || !tripData) {
-          console.warn('Trip record fetch error:', tripErr?.message)
+        if (tripsErr || !tripsData) {
+          // No active trip found
+          setCurrentTrip(null)
+          setMembers([])
+          const soloFlag = localStorage.getItem(`safar_solo_${user.id}`) === 'true'
+          setIsSolo(soloFlag)
         } else {
-          setCurrentTrip(tripData)
-          localStorage.setItem(`safar_trip_${user.id}`, JSON.stringify({ trip: tripData }))
-          await fetchMembersForTrip(activeTripId)
+          setCurrentTrip(tripsData)
+          localStorage.setItem(`safar_trip_${user.id}`, JSON.stringify({ trip: tripsData }))
+          await fetchMembersForTrip(tripsData.id)
           setIsSolo(false)
         }
       } else {
@@ -123,7 +133,7 @@ export const TripProvider = ({ children }) => {
     fetchActiveTrip()
   }, [user?.id])
 
-  // Supabase Realtime Subscription on trip_members
+  // ── Realtime: trip_members changes ────────────────────────────────────────
   useEffect(() => {
     if (!currentTrip?.id) return
 
@@ -149,7 +159,39 @@ export const TripProvider = ({ children }) => {
     }
   }, [currentTrip?.id])
 
-  // Guide creates a trip
+  // ── Realtime: trip is_active=false (guide ends trip) ─────────────────────
+  useEffect(() => {
+    if (!currentTrip?.id) return
+
+    const channelName = `trip_active_watch_${currentTrip.id}`
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'trips',
+          filter: `id=eq.${currentTrip.id}`,
+        },
+        (payload) => {
+          if (payload.new?.is_active === false) {
+            // Guide ended the trip – members see this via realtime
+            localStorage.removeItem(`safar_trip_${user?.id}`)
+            setCurrentTrip(null)
+            setMembers([])
+            setIsSolo(false)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentTrip?.id, user?.id])
+
+  // ── Create trip (any user becomes the guide) ──────────────────────────────
   const createTrip = async (tripName) => {
     if (!user) return { error: new Error('User not authenticated') }
 
@@ -163,6 +205,7 @@ export const TripProvider = ({ children }) => {
           name: name,
           code: code,
           created_by: user.id,
+          is_active: true,
         })
         .select()
         .single()
@@ -174,6 +217,7 @@ export const TripProvider = ({ children }) => {
           name: name,
           code: code,
           created_by: user.id,
+          is_active: true,
           created_at: new Date().toISOString(),
         }
         const mockMembers = [
@@ -183,7 +227,7 @@ export const TripProvider = ({ children }) => {
             role: 'guide',
             name: profile?.name || 'Guide',
             phone: profile?.phone || '',
-            userRole: 'guide',
+            userRole: profile?.role || 'traveler',
           },
         ]
         setCurrentTrip(mockTrip)
@@ -194,13 +238,14 @@ export const TripProvider = ({ children }) => {
         return { data: mockTrip, error: null }
       }
 
+      // Insert creator as 'guide' role in trip_members
       const { error: memberError } = await supabase.from('trip_members').insert({
         trip_id: tripData.id,
         user_id: user.id,
         role: 'guide',
       })
 
-      if (memberError) console.warn('Error adding guide to trip_members:', memberError.message)
+      if (memberError) console.warn('Error adding creator to trip_members:', memberError.message)
 
       localStorage.removeItem(`safar_solo_${user.id}`)
       await fetchActiveTrip()
@@ -210,7 +255,7 @@ export const TripProvider = ({ children }) => {
     }
   }
 
-  // Traveler joins a trip by 6-character code
+  // ── Join trip by code ─────────────────────────────────────────────────────
   const joinTrip = async (inputCode, forceSwitch = false) => {
     if (!user) return { error: new Error('User not authenticated') }
     const cleanedCode = inputCode?.trim().toUpperCase()
@@ -219,29 +264,27 @@ export const TripProvider = ({ children }) => {
       return { error: new Error('Please enter a valid 6-character trip code.') }
     }
 
-    // 1. Check if entering code for current trip
     if (currentTrip && currentTrip.code?.toUpperCase() === cleanedCode) {
       return { error: new Error("You're already in this trip") }
     }
 
     try {
-      // 2. Find target trip by code
       const { data: tripData, error: tripError } = await supabase
         .from('trips')
         .select('*')
         .ilike('code', cleanedCode)
+        .eq('is_active', true)
         .maybeSingle()
 
       if (tripError || !tripData) {
-        return { error: new Error('No trip found matching that 6-character code. Check and try again.') }
+        return { error: new Error('No active trip found matching that 6-character code. Check and try again.') }
       }
 
-      // Check if target trip is current trip
       if (currentTrip && currentTrip.id === tripData.id) {
         return { error: new Error("You're already in this trip") }
       }
 
-      // 3. If traveler is already in a different trip and forceSwitch is false, ask for confirmation
+      // Already in a different trip – require confirmation unless force
       if (currentTrip && currentTrip.id !== tripData.id && !forceSwitch) {
         return {
           requiresConfirmation: true,
@@ -250,9 +293,12 @@ export const TripProvider = ({ children }) => {
         }
       }
 
-      // 4. If forceSwitch is true, leave current trip first
+      // Leave current trip if switching
       if (currentTrip && forceSwitch) {
-        const { data: delData, error: delErr } = await supabase
+        if (isGuide) {
+          return { error: new Error("You're the guide. End your current trip before joining another.") }
+        }
+        const { error: delErr } = await supabase
           .from('trip_members')
           .delete()
           .eq('trip_id', currentTrip.id)
@@ -264,18 +310,16 @@ export const TripProvider = ({ children }) => {
         }
       }
 
-      // 5. Insert member into trip_members
-      const { data: memberData, error: joinError } = await supabase
+      const { error: joinError } = await supabase
         .from('trip_members')
         .insert({
           trip_id: tripData.id,
           user_id: user.id,
-          role: profile?.role || 'traveler',
+          role: 'traveler',
         })
         .select()
 
       if (joinError) {
-        // Catch duplicate key violation code 23505 or message
         if (joinError.code === '23505' || joinError.message?.includes('duplicate key') || joinError.message?.includes('already exists')) {
           return { error: new Error("You're already in this trip") }
         }
@@ -290,7 +334,7 @@ export const TripProvider = ({ children }) => {
     }
   }
 
-  // Traveler chooses Solo Mode
+  // ── Solo mode ─────────────────────────────────────────────────────────────
   const chooseSolo = () => {
     if (user) {
       localStorage.setItem(`safar_solo_${user.id}`, 'true')
@@ -301,10 +345,14 @@ export const TripProvider = ({ children }) => {
     setMembers([])
   }
 
-  // Leave active trip - REQUIRE actual DB row deletion before local state clear
+  // ── Leave trip (members only) ─────────────────────────────────────────────
   const leaveTrip = async () => {
     if (!user || !currentTrip) {
       return { error: new Error('No active trip to leave.') }
+    }
+
+    if (isGuide) {
+      return { error: new Error("You're the guide. Use 'End Trip' to close this trip for everyone.") }
     }
 
     try {
@@ -320,9 +368,7 @@ export const TripProvider = ({ children }) => {
         return { error: new Error(`Failed to leave trip: ${error.message}`) }
       }
 
-      // Check that at least 1 row was returned from database
       if (!data || data.length === 0) {
-        // Fallback check for mock storage if DB tables not run
         const storedMock = localStorage.getItem(`safar_trip_${user.id}`)
         if (storedMock) {
           localStorage.removeItem(`safar_trip_${user.id}`)
@@ -332,11 +378,10 @@ export const TripProvider = ({ children }) => {
           return { data: true, error: null }
         }
         return {
-          error: new Error('Failed to leave trip: Membership record was not found or could not be deleted from database.'),
+          error: new Error('Failed to leave trip: Membership record was not found.'),
         }
       }
 
-      // Only update local UI after database confirmation
       localStorage.removeItem(`safar_trip_${user.id}`)
       setCurrentTrip(null)
       setMembers([])
@@ -348,17 +393,51 @@ export const TripProvider = ({ children }) => {
     }
   }
 
+  // ── End trip (guide only) – sets is_active = false ────────────────────────
+  const endTrip = async () => {
+    if (!user || !currentTrip) {
+      return { error: new Error('No active trip to end.') }
+    }
+
+    if (!isGuide) {
+      return { error: new Error("Only the guide can end the trip.") }
+    }
+
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .update({ is_active: false })
+        .eq('id', currentTrip.id)
+
+      if (error) {
+        console.error('Error ending trip:', error.message)
+        return { error: new Error(`Failed to end trip: ${error.message}`) }
+      }
+
+      localStorage.removeItem(`safar_trip_${user.id}`)
+      setCurrentTrip(null)
+      setMembers([])
+      setIsSolo(false)
+      return { data: true, error: null }
+    } catch (err) {
+      console.error('Unexpected error ending trip:', err)
+      return { error: err }
+    }
+  }
+
   return (
     <TripContext.Provider
       value={{
         currentTrip,
         members,
         isSolo,
+        isGuide,
         loading,
         createTrip,
         joinTrip,
         chooseSolo,
         leaveTrip,
+        endTrip,
         refreshTrip: fetchActiveTrip,
       }}
     >

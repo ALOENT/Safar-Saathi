@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Shield, User, Compass, Building2, Lock, Mail, Phone, ArrowRight, AlertCircle } from 'lucide-react'
+import { Shield, User, Lock, Mail, Phone, ArrowRight, AlertCircle } from 'lucide-react'
 
 export const AuthPage = () => {
   const [isSignUp, setIsSignUp] = useState(false)
@@ -10,7 +10,6 @@ export const AuthPage = () => {
     email: '',
     password: '',
     phone: '',
-    role: 'traveler'
   })
   const [errorMsg, setErrorMsg] = useState('')
   const [loading, setLoading] = useState(false)
@@ -35,12 +34,12 @@ export const AuthPage = () => {
           return
         }
 
-        const { data, error } = await signUp({
+        // Always sign up as 'traveler' – no role selector
+        const { error } = await signUp({
           email: formData.email,
           password: formData.password,
           name: formData.name,
           phone: formData.phone,
-          role: formData.role
         })
 
         if (error) {
@@ -49,15 +48,11 @@ export const AuthPage = () => {
           return
         }
 
-        // Navigate based on selected role
-        if (formData.role === 'guide') navigate('/guide')
-        else if (formData.role === 'authority') navigate('/authority')
-        else navigate('/home')
-
+        navigate('/home')
       } else {
         const { data, error } = await signIn({
           email: formData.email,
-          password: formData.password
+          password: formData.password,
         })
 
         if (error) {
@@ -66,8 +61,10 @@ export const AuthPage = () => {
           return
         }
 
-        // AuthContext will update profile, but default navigation handles role routing
-        navigate('/home')
+        // Navigate based on loaded profile role
+        const role = data?.user?.user_metadata?.role || 'traveler'
+        if (role === 'authority') navigate('/authority')
+        else navigate('/home')
       }
     } catch (err) {
       setErrorMsg(err.message || 'An unexpected error occurred.')
@@ -75,12 +72,6 @@ export const AuthPage = () => {
       setLoading(false)
     }
   }
-
-  const roleOptions = [
-    { id: 'traveler', label: 'Traveler', description: 'Tourist seeking safety & tracking', icon: User },
-    { id: 'guide', label: 'Guide', description: 'Tour leader managing groups', icon: Compass },
-    { id: 'authority', label: 'Authority', description: 'Emergency responder & admin', icon: Building2 },
-  ]
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center px-4 py-8 sm:px-6 lg:px-8">
@@ -138,6 +129,7 @@ export const AuthPage = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Full Name – sign up only */}
             {isSignUp && (
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">Full Name</label>
@@ -156,6 +148,7 @@ export const AuthPage = () => {
               </div>
             )}
 
+            {/* Email */}
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
               <div className="relative">
@@ -172,6 +165,7 @@ export const AuthPage = () => {
               </div>
             </div>
 
+            {/* Password */}
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">Password</label>
               <div className="relative">
@@ -189,49 +183,24 @@ export const AuthPage = () => {
               </div>
             </div>
 
+            {/* Phone – sign up only */}
             {isSignUp && (
-              <>
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Phone Number (Optional)</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      placeholder="+91 9876543210"
-                      className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Phone Number <span className="text-slate-500">(Optional)</span>
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    placeholder="+91 9876543210"
+                    className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  />
                 </div>
-
-                {/* Role Selector */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-2">Select Your Role</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {roleOptions.map((opt) => {
-                      const IconComponent = opt.icon
-                      const selected = formData.role === opt.id
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, role: opt.id })}
-                          className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
-                            selected
-                              ? 'bg-emerald-950 border-emerald-500 text-emerald-200 ring-1 ring-emerald-500'
-                              : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                          }`}
-                        >
-                          <IconComponent className={`w-5 h-5 mb-1 ${selected ? 'text-emerald-400' : 'text-slate-500'}`} />
-                          <span className="text-xs font-semibold capitalize">{opt.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </>
+              </div>
             )}
 
             <button

@@ -22,8 +22,10 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/login" replace />
   }
 
-  // If specific roles are required for this route, ensure user profile role matches
-  if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+  // Normalise: treat legacy 'guide' role the same as 'traveler' for route access
+  const effectiveRole = profile?.role === 'guide' ? 'traveler' : (profile?.role || 'traveler')
+
+  if (allowedRoles && profile && !allowedRoles.includes(effectiveRole) && !allowedRoles.includes(profile.role)) {
     const defaultRoleHome = ROLE_HOMES[profile.role] || '/home'
     return <Navigate to={defaultRoleHome} replace />
   }

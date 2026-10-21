@@ -64,7 +64,11 @@ export const AuthProvider = ({ children }) => {
     }
   }, [])
 
-  const signUp = async ({ email, password, name, phone, role }) => {
+  /**
+   * Sign up – always inserts role = 'traveler'.
+   * 'authority' is NOT selectable from the UI.
+   */
+  const signUp = async ({ email, password, name, phone }) => {
     setLoading(true)
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -74,7 +78,7 @@ export const AuthProvider = ({ children }) => {
           data: {
             name,
             phone,
-            role,
+            role: 'traveler',
           }
         }
       })
@@ -82,14 +86,14 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error
 
       if (data.user) {
-        // Double-check profile creation (upsert if trigger is not present)
+        // Double-check profile creation (upsert in case trigger is absent)
         const { error: profileError } = await supabase
           .from('profiles')
           .upsert({
             id: data.user.id,
             name: name,
-            role: role || 'traveler',
-            phone: phone || ''
+            role: 'traveler',
+            phone: phone || '',
           })
 
         if (profileError) {
@@ -98,7 +102,7 @@ export const AuthProvider = ({ children }) => {
 
         const freshProfile = await fetchProfile(data.user.id)
         setUser(data.user)
-        setProfile(freshProfile || { id: data.user.id, name, role, phone })
+        setProfile(freshProfile || { id: data.user.id, name, role: 'traveler', phone })
       }
 
       return { data, error: null }

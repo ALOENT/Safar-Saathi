@@ -36,6 +36,12 @@
   animation: pulse-slow 2s ease-in-out infinite;
 }
 
+/* Toast slide-in animation */
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* Authority dashboard – fixed map heights */
 .authority-map-wrapper {
   height: 360px;

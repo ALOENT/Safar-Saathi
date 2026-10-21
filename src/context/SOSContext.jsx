@@ -6,14 +6,14 @@ import { useLocation } from './LocationContext'
 
 const SOSContext = createContext({})
 
-// Statuses visible to guide (active list)
+// Statuses the guide sees for their trip
 const GUIDE_ACTIVE_STATUSES = ['active', 'acknowledged']
-// Statuses visible to authority (active list)
+// Statuses authority sees
 const AUTHORITY_ACTIVE_STATUSES = ['active', 'acknowledged', 'guide_resolved']
 
 export const SOSProvider = ({ children }) => {
   const { user, profile } = useAuth()
-  const { currentTrip } = useTrip()
+  const { currentTrip, isGuide } = useTrip()
   const { myLocation } = useLocation()
 
   const [alerts, setAlerts] = useState([])
@@ -21,31 +21,32 @@ export const SOSProvider = ({ children }) => {
   const [sending, setSending] = useState(false)
   const [lastSentAlert, setLastSentAlert] = useState(null)
 
-  // For traveler: track the status of their own latest SOS
-  const [myAlertStatus, setMyAlertStatus] = useState(null) // null | 'active' | 'guide_resolved' | 'resolved'
+  // For regular users: track the status of their own latest SOS
+  const [myAlertStatus, setMyAlertStatus] = useState(null)
   const myAlertIdRef = useRef(null)
 
-  const role = profile?.role
+  const isAuthority = profile?.role === 'authority'
 
-  // ── Fetch alerts on mount / role change ──────────────────────────────────
+  // ── Fetch alerts ──────────────────────────────────────────────────────────
   const fetchAlerts = useCallback(async () => {
     if (!user) return
 
     try {
-      const statuses =
-        role === 'authority'
-          ? AUTHORITY_ACTIVE_STATUSES
-          : GUIDE_ACTIVE_STATUSES
-
       let query = supabase
         .from('sos_alerts')
         .select('*, profiles:user_id(name, phone)')
-        .in('status', statuses)
         .order('created_at', { ascending: false })
 
-      if (role === 'guide') {
+      if (isAuthority) {
+        query = query.in('status', AUTHORITY_ACTIVE_STATUSES)
+      } else if (isGuide) {
         if (!currentTrip?.id) return
-        query = query.eq('trip_id', currentTrip.id)
+        query = query
+          .in('status', GUIDE_ACTIVE_STATUSES)
+          .eq('trip_id', currentTrip.id)
+      } else {
+        // Normal user – just fetch their own alerts for Alerts tab
+        query = query.eq('user_id', user.id).limit(20)
       }
 
       const { data, error } = await query
@@ -57,30 +58,27 @@ export const SOSProvider = ({ children }) => {
     } catch (err) {
       console.error('Unexpected error fetching SOS alerts:', err)
     }
-  }, [user, role, currentTrip?.id])
+  }, [user, isAuthority, isGuide, currentTrip?.id])
 
   useEffect(() => {
-    if (user && (role === 'guide' || role === 'authority')) {
-      fetchAlerts()
-    }
-  }, [user, role, currentTrip?.id, fetchAlerts])
+    fetchAlerts()
+  }, [fetchAlerts])
 
-  // ── Realtime subscription for guide / authority ──────────────────────────
+  // ── Realtime subscription for guide / authority ───────────────────────────
   useEffect(() => {
-    if (!user || (role !== 'guide' && role !== 'authority')) return
-    if (role === 'guide' && !currentTrip?.id) return
+    if (!user) return
+    if (!isAuthority && !isGuide) return
+    if (isGuide && !currentTrip?.id) return
 
-    const channelName = `sos_realtime_${role}_${user.id}_${currentTrip?.id || 'all'}`
+    const channelName = `sos_realtime_${user.id}_${currentTrip?.id || 'auth'}`
 
-    const insertFilter =
-      role === 'guide'
-        ? { event: 'INSERT', schema: 'public', table: 'sos_alerts', filter: `trip_id=eq.${currentTrip.id}` }
-        : { event: 'INSERT', schema: 'public', table: 'sos_alerts' }
+    const insertFilter = isGuide
+      ? { event: 'INSERT', schema: 'public', table: 'sos_alerts', filter: `trip_id=eq.${currentTrip.id}` }
+      : { event: 'INSERT', schema: 'public', table: 'sos_alerts' }
 
     const channel = supabase
       .channel(channelName)
 
-      // ── INSERT: new alert comes in ─────────────────────────────────────
       .on('postgres_changes', insertFilter, async (payload) => {
         const newAlert = payload.new
 
@@ -95,7 +93,6 @@ export const SOSProvider = ({ children }) => {
         } catch {}
 
         setAlerts((prev) => {
-          // Avoid duplicates
           if (prev.find((a) => a.id === newAlert.id)) return prev
           return [alertWithProfile, ...prev]
         })
@@ -105,33 +102,27 @@ export const SOSProvider = ({ children }) => {
         playAlarm()
       })
 
-      // ── UPDATE: status change ─────────────────────────────────────────
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'sos_alerts' },
         (payload) => {
           const updated = payload.new
           setAlerts((prev) => {
-            // If status is 'resolved', remove from list for both guide and authority
-            // If status is 'guide_resolved', remove from guide list but keep for authority
             if (updated.status === 'resolved') {
               return prev.filter((a) => a.id !== updated.id)
             }
-            if (role === 'guide' && updated.status === 'guide_resolved') {
+            if (isGuide && updated.status === 'guide_resolved') {
               return prev.filter((a) => a.id !== updated.id)
             }
-            // Otherwise update in place
             const exists = prev.find((a) => a.id === updated.id)
             if (exists) {
               return prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
             }
-            // Alert might have newly entered our visible set (e.g. authority sees guide_resolved)
             return prev
           })
         }
       )
 
-      // ── DELETE: hard delete ───────────────────────────────────────────
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'sos_alerts' },
@@ -149,13 +140,12 @@ export const SOSProvider = ({ children }) => {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user, role, currentTrip?.id])
+  }, [user, isAuthority, isGuide, currentTrip?.id])
 
-  // ── Traveler: watch their own latest alert for status changes ────────────
+  // ── Watch own alert for status updates (regular user) ────────────────────
   useEffect(() => {
-    if (!user || role !== 'traveler') return
+    if (!user || isAuthority) return
 
-    // Load the traveler's own latest active alert id from DB on mount
     const loadMyAlert = async () => {
       const { data } = await supabase
         .from('sos_alerts')
@@ -174,24 +164,21 @@ export const SOSProvider = ({ children }) => {
     loadMyAlert()
 
     const channel = supabase
-      .channel(`traveler_own_alert_${user.id}`)
+      .channel(`user_own_alert_${user.id}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'sos_alerts', filter: `user_id=eq.${user.id}` },
         (payload) => {
           const updated = payload.new
           setMyAlertStatus(updated.status)
-          if (updated.status === 'guide_resolved' || updated.status === 'resolved') {
-            // Traveler sees toast — triggered via myAlertStatus change in TravelerHome
-          }
         }
       )
       .subscribe()
 
     return () => supabase.removeChannel(channel)
-  }, [user?.id, role])
+  }, [user?.id, isAuthority])
 
-  // ── Send SOS (traveler) ──────────────────────────────────────────────────
+  // ── Send SOS ─────────────────────────────────────────────────────────────
   const sendSOS = async () => {
     if (!user || sending) return { error: new Error('Cannot send SOS') }
 
@@ -224,7 +211,7 @@ export const SOSProvider = ({ children }) => {
     }
   }
 
-  // ── Guide: "Traveler is safe" → guide_resolved ───────────────────────────
+  // ── Guide: "Traveler is safe" → guide_resolved ────────────────────────────
   const guideResolveAlert = async (alertId) => {
     try {
       const { error } = await supabase
@@ -237,7 +224,6 @@ export const SOSProvider = ({ children }) => {
         return { error }
       }
 
-      // Move alert out of active list into "waiting" section (handled by state)
       setAlerts((prev) =>
         prev.map((a) => (a.id === alertId ? { ...a, status: 'guide_resolved', guide_resolved_at: new Date().toISOString() } : a))
       )
@@ -248,7 +234,29 @@ export const SOSProvider = ({ children }) => {
     }
   }
 
-  // ── Authority: resolve (fully close) ────────────────────────────────────
+  // ── Authority: acknowledge ────────────────────────────────────────────────
+  const acknowledgeAlert = async (alertId) => {
+    try {
+      const { error } = await supabase
+        .from('sos_alerts')
+        .update({ status: 'acknowledged' })
+        .eq('id', alertId)
+
+      if (error) {
+        console.error('Acknowledge error:', error.message)
+        return { error }
+      }
+
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === alertId ? { ...a, status: 'acknowledged' } : a))
+      )
+      return { error: null }
+    } catch (err) {
+      return { error: err }
+    }
+  }
+
+  // ── Authority: fully resolve ──────────────────────────────────────────────
   const resolveAlert = async (alertId) => {
     try {
       const { error } = await supabase
@@ -273,29 +281,7 @@ export const SOSProvider = ({ children }) => {
     }
   }
 
-  // ── Authority: acknowledge ───────────────────────────────────────────────
-  const acknowledgeAlert = async (alertId) => {
-    try {
-      const { error } = await supabase
-        .from('sos_alerts')
-        .update({ status: 'acknowledged' })
-        .eq('id', alertId)
-
-      if (error) {
-        console.error('Acknowledge error:', error.message)
-        return { error }
-      }
-
-      setAlerts((prev) =>
-        prev.map((a) => (a.id === alertId ? { ...a, status: 'acknowledged' } : a))
-      )
-      return { error: null }
-    } catch (err) {
-      return { error: err }
-    }
-  }
-
-  // ── Alarm sound (Web Audio API) ──────────────────────────────────────────
+  // ── Alarm sound ───────────────────────────────────────────────────────────
   const playAlarm = () => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
@@ -331,6 +317,7 @@ export const SOSProvider = ({ children }) => {
         sending,
         lastSentAlert,
         myAlertStatus,
+        isGuide,
         sendSOS,
         guideResolveAlert,
         resolveAlert,

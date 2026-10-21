@@ -10,19 +10,9 @@ export const Navbar = () => {
 
   if (!user) return null
 
-  const userRole = profile?.role || 'traveler'
-  const navItems = NAV_CONFIG[userRole] || NAV_CONFIG.traveler
-
-  const getRoleBadgeColor = (role) => {
-    switch (role) {
-      case 'guide':
-        return 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-      case 'authority':
-        return 'bg-red-500/20 text-red-300 border-red-500/40'
-      default:
-        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-    }
-  }
+  // Authority gets its own nav; everyone else gets the unified user nav
+  const isAuthority = profile?.role === 'authority'
+  const navItems = isAuthority ? NAV_CONFIG.authority : NAV_CONFIG.user
 
   return (
     <>
@@ -40,9 +30,9 @@ export const Navbar = () => {
           </div>
         </div>
 
-        {profile && (
+        {profile && isAuthority && (
           <div className="flex items-center space-x-2">
-            <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border capitalize ${getRoleBadgeColor(profile.role)}`}>
+            <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-red-500/20 text-red-300 border-red-500/40 capitalize">
               {profile.role}
             </span>
           </div>
