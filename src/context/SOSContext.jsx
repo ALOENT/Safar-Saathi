@@ -19,6 +19,7 @@ export const SOSProvider = ({ children }) => {
 
   const [alerts, setAlerts]           = useState([])
   const [myOwnAlerts, setMyOwnAlerts] = useState([])  // traveler's personal SOS history
+  const [fetchError, setFetchError]   = useState(null) // last fetch error for consumers
   const [incomingAlert, setIncomingAlert] = useState(null)
   const [sending, setSending]         = useState(false)
   const [lastSentAlert, setLastSentAlert] = useState(null)
@@ -33,15 +34,20 @@ export const SOSProvider = ({ children }) => {
   const fetchAlerts = useCallback(async () => {
     if (!user) return
 
+    setFetchError(null)
     try {
       // 1. Always fetch user's own SOS history
-      const { data: ownData } = await supabase
+      const { data: ownData, error: ownError } = await supabase
         .from('sos_alerts')
         .select('*, profiles:user_id(name, phone)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(30)
-      setMyOwnAlerts(ownData || [])
+      if (ownError) {
+        setFetchError(ownError.message)
+      } else {
+        setMyOwnAlerts(ownData || [])
+      }
 
       // 2. Guide or Authority: fetch trip-scoped / all alerts
       if (isAuthority) {
@@ -50,7 +56,8 @@ export const SOSProvider = ({ children }) => {
           .select('*, profiles:user_id(name, phone)')
           .in('status', AUTHORITY_ACTIVE_STATUSES)
           .order('created_at', { ascending: false })
-        if (!error) setAlerts(data || [])
+        if (error) setFetchError(error.message)
+        else setAlerts(data || [])
 
       } else if (isGuide && currentTrip?.id) {
         const { data, error } = await supabase
@@ -59,7 +66,8 @@ export const SOSProvider = ({ children }) => {
           .in('status', GUIDE_ACTIVE_STATUSES)
           .eq('trip_id', currentTrip.id)
           .order('created_at', { ascending: false })
-        if (!error) setAlerts(data || [])
+        if (error) setFetchError(error.message)
+        else setAlerts(data || [])
 
       } else {
         // Regular member or solo: alerts state is unused (only myOwnAlerts matters)
@@ -67,6 +75,7 @@ export const SOSProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('Unexpected error fetching SOS alerts:', err)
+      setFetchError(err.message || 'Unexpected error')
     }
   }, [user, isAuthority, isGuide, currentTrip?.id])
 
@@ -170,7 +179,17 @@ export const SOSProvider = ({ children }) => {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'sos_alerts', filter: `user_id=eq.${user.id}` },
-        (payload) => setMyAlertStatus(payload.new.status)
+        (payload) => {
+          const updated = payload.new
+          // Only update myAlertStatus when this is the current active alert
+          if (myAlertIdRef.current && updated.id === myAlertIdRef.current) {
+            setMyAlertStatus(updated.status)
+          }
+          // Always patch myOwnAlerts so MyAlertRow re-renders immediately
+          setMyOwnAlerts((prev) =>
+            prev.map((a) => (a.id === updated.id ? { ...a, status: updated.status } : a))
+          )
+        }
       )
       .subscribe()
 
@@ -214,9 +233,8 @@ export const SOSProvider = ({ children }) => {
         .update({ status: 'guide_resolved', guide_resolved_at: new Date().toISOString() })
         .eq('id', alertId)
       if (error) return { error }
-      setAlerts((prev) =>
-        prev.map((a) => (a.id === alertId ? { ...a, status: 'guide_resolved' } : a))
-      )
+      // Remove from guide's active list (guide only sees active + acknowledged)
+      setAlerts((prev) => prev.filter((a) => a.id !== alertId))
       if (incomingAlert?.id === alertId) dismissBanner()
       return { error: null }
     } catch (err) {
@@ -288,6 +306,7 @@ export const SOSProvider = ({ children }) => {
       value={{
         alerts,         // guide/authority-scoped active alerts
         myOwnAlerts,    // traveler's personal SOS history
+        fetchError,     // last fetch error string or null
         incomingAlert,
         sending,
         lastSentAlert,

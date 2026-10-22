@@ -4,7 +4,7 @@ import { useSOS } from '../context/SOSContext'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import { SOSDeskPage } from './SOSDeskPage'
 import {
-  Bell, CheckCircle2, AlertTriangle, Clock, MapPin, CheckCircle, Crown,
+  Bell, CheckCircle2, AlertTriangle, Clock, MapPin, CheckCircle, Crown, AlertCircle,
 } from 'lucide-react'
 
 // ── Status helpers ────────────────────────────────────────────────────────────
@@ -83,13 +83,21 @@ const EmptyState = ({ text }) => (
   </div>
 )
 
+// ── Error state ───────────────────────────────────────────────────────────────
+const ErrorState = ({ text }) => (
+  <div className="bg-red-950/60 border border-red-800/60 rounded-2xl p-4 flex items-start space-x-2.5">
+    <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+    <p className="text-xs text-red-300">{text || 'Failed to load alerts. Pull to retry.'}</p>
+  </div>
+)
+
 // ── Main AlertsPage ───────────────────────────────────────────────────────────
 export const AlertsPage = () => {
   const { profile } = useAuth()
   const { isGuide, trip } = useActiveTrip()
   // `alerts`      = guide's or authority's active trip alerts
   // `myOwnAlerts` = this user's own SOS sends
-  const { alerts: tripAlerts, myOwnAlerts } = useSOS()
+  const { alerts: tripAlerts, myOwnAlerts, fetchError } = useSOS()
 
   // Authority always sees the full SOS desk
   if (profile?.role === 'authority') {
@@ -117,7 +125,9 @@ export const AlertsPage = () => {
       {/* ── My own SOS history ── */}
       <div className="space-y-3">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">My SOS History</h3>
-        {myOwnAlerts.length === 0 ? (
+        {fetchError && myOwnAlerts.length === 0 ? (
+          <ErrorState text={fetchError} />
+        ) : myOwnAlerts.length === 0 ? (
           <EmptyState text="You haven't sent any SOS alerts. Your emergency history will appear here." />
         ) : (
           myOwnAlerts.map((a) => <MyAlertRow key={a.id} alert={a} />)
@@ -136,7 +146,9 @@ export const AlertsPage = () => {
               <Crown className="w-2.5 h-2.5" /><span>Guide</span>
             </span>
           </div>
-          {tripAlerts.length === 0 ? (
+          {fetchError ? (
+            <ErrorState text={fetchError} />
+          ) : tripAlerts.length === 0 ? (
             <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 text-center">
               <CheckCircle className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
               <p className="text-xs text-slate-400">No active SOS alerts in your trip. All travelers are safe.</p>

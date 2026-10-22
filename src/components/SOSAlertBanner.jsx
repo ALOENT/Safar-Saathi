@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { useSOS } from '../context/SOSContext'
 import { AlertTriangle, MapPin, CheckCircle2, X } from 'lucide-react'
 
 export const SOSAlertBanner = () => {
+  const { profile } = useAuth()
   const { incomingAlert, dismissBanner, guideResolveAlert, resolveAlert, isGuide } = useSOS()
   const navigate = useNavigate()
   const [resolveError, setResolveError] = useState(null)
@@ -22,11 +24,15 @@ export const SOSAlertBanner = () => {
     navigate(`/map?sos_lat=${incomingAlert.lat}&sos_lng=${incomingAlert.lng}&sos_name=${encodeURIComponent(personName)}`)
   }
 
-  // Guide marks traveler safe; authority fully resolves
+  // Authority always fully resolves.
+  // Non-authority users who created the trip (isGuide) mark the traveler safe.
+  // Everyone else (rare: solo, member) falls back to resolveAlert.
+  const isAuthority = profile?.role === 'authority'
+  const fn          = (!isAuthority && isGuide) ? guideResolveAlert : resolveAlert
+
   const handleAction = async () => {
     setResolveError(null)
     setResolving(true)
-    const fn     = isGuide ? guideResolveAlert : resolveAlert
     const result = await fn(incomingAlert.id)
     setResolving(false)
     if (result?.error) {
@@ -34,7 +40,7 @@ export const SOSAlertBanner = () => {
     }
   }
 
-  const actionLabel = isGuide ? 'Traveler is Safe ✓' : 'Mark Resolved'
+  const actionLabel = (!isAuthority && isGuide) ? 'Traveler is Safe ✓' : 'Mark Resolved'
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-red-950/95 backdrop-blur-md animate-pulse-slow">
