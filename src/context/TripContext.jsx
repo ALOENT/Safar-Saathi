@@ -192,44 +192,46 @@ export const TripProvider = ({ children }) => {
   }, [currentTrip?.id, user?.id])
 
   // ── Create trip (any user becomes the guide) ──────────────────────────────
-  const createTrip = async (tripName) => {
+  // payload: { name, description, destination, start_point, meeting_point,
+  //            start_date, end_date, notes, route: [{name,lat,lng,order,planned_time,note}] }
+  const createTrip = async (payload) => {
     if (!user) return { error: new Error('User not authenticated') }
 
     const code = generateTripCode()
-    const name = tripName?.trim() || `${profile?.name || 'Guide'}'s Tour`
+    const name = (typeof payload === 'string' ? payload : payload?.name)?.trim()
+      || `${profile?.name || 'Guide'}'s Tour`
+
+    const insertData = typeof payload === 'object' && payload !== null
+      ? {
+          name,
+          code,
+          created_by: user.id,
+          is_active: true,
+          description:    payload.description    || null,
+          destination:    payload.destination    || null,
+          start_point:    payload.start_point    || null,
+          meeting_point:  payload.meeting_point  || null,
+          start_date:     payload.start_date     || null,
+          end_date:       payload.end_date        || null,
+          notes:          payload.notes           || null,
+          route:          payload.route?.length   ? payload.route : null,
+        }
+      : { name, code, created_by: user.id, is_active: true }
 
     try {
       const { data: tripData, error: tripError } = await supabase
         .from('trips')
-        .insert({
-          name: name,
-          code: code,
-          created_by: user.id,
-          is_active: true,
-        })
+        .insert(insertData)
         .select()
         .single()
 
       if (tripError) {
         console.warn('DB create trip fallback:', tripError.message)
-        const mockTrip = {
-          id: 'mock-trip-' + Date.now(),
-          name: name,
-          code: code,
-          created_by: user.id,
-          is_active: true,
-          created_at: new Date().toISOString(),
-        }
-        const mockMembers = [
-          {
-            id: 'mock-mem-1',
-            user_id: user.id,
-            role: 'guide',
-            name: profile?.name || 'Guide',
-            phone: profile?.phone || '',
-            userRole: profile?.role || 'traveler',
-          },
-        ]
+        const mockTrip = { id: 'mock-trip-' + Date.now(), ...insertData, created_at: new Date().toISOString() }
+        const mockMembers = [{
+          id: 'mock-mem-1', user_id: user.id, role: 'guide',
+          name: profile?.name || 'Guide', phone: profile?.phone || '', userRole: profile?.role || 'traveler',
+        }]
         setCurrentTrip(mockTrip)
         setMembers(mockMembers)
         setIsSolo(false)
@@ -238,13 +240,9 @@ export const TripProvider = ({ children }) => {
         return { data: mockTrip, error: null }
       }
 
-      // Insert creator as 'guide' role in trip_members
-      const { error: memberError } = await supabase.from('trip_members').insert({
-        trip_id: tripData.id,
-        user_id: user.id,
-        role: 'guide',
-      })
-
+      const { error: memberError } = await supabase
+        .from('trip_members')
+        .insert({ trip_id: tripData.id, user_id: user.id, role: 'guide' })
       if (memberError) console.warn('Error adding creator to trip_members:', memberError.message)
 
       localStorage.removeItem(`safar_solo_${user.id}`)
@@ -252,6 +250,24 @@ export const TripProvider = ({ children }) => {
       return { data: tripData, error: null }
     } catch (err) {
       return { data: null, error: err }
+    }
+  }
+
+  // ── Update trip details (guide only) ──────────────────────────────────────
+  const updateTrip = async (tripId, updates) => {
+    if (!user || !isGuide) return { error: new Error('Only the guide can edit the trip.') }
+    try {
+      const { data, error } = await supabase
+        .from('trips')
+        .update(updates)
+        .eq('id', tripId)
+        .select()
+        .single()
+      if (error) return { error }
+      setCurrentTrip((prev) => prev ? { ...prev, ...data } : data)
+      return { data, error: null }
+    } catch (err) {
+      return { error: err }
     }
   }
 
@@ -434,6 +450,7 @@ export const TripProvider = ({ children }) => {
         isGuide,
         loading,
         createTrip,
+        updateTrip,
         joinTrip,
         chooseSolo,
         leaveTrip,

@@ -13,6 +13,7 @@
  */
 
 import riskZones from '../data/riskZones.json'
+import { distanceToPolyline } from './routeUtils'
 
 // ── Haversine distance in metres ──────────────────────────────────────────────
 export function haversineDistance(lat1, lng1, lat2, lng2) {
@@ -60,6 +61,7 @@ export function isNightTime(date = new Date()) {
  * @param {Array<{lat:number,lng:number}>} [params.groupLocations=[]]  – all member locs incl. self
  * @param {boolean} [params.isSolo=false]
  * @param {number|null} [params.weatherCode=null]
+ * @param {number[][]|null} [params.routeCoordinates=null]  – [lng,lat][] GeoJSON from fetchRoute; skip check when null/empty
  * @param {Date} [params.now]   – injectable for testing; defaults to new Date()
  * @returns {{ score: number, level: 'low'|'moderate'|'high', reasons: string[] }}
  */
@@ -69,6 +71,7 @@ export function computeSafetyScore({
   groupLocations = [],
   isSolo = false,
   weatherCode = null,
+  routeCoordinates = null,
   now = new Date(),
 } = {}) {
   let score = 100
@@ -113,6 +116,18 @@ export function computeSafetyScore({
         reasons.push(`Inside risk zone: ${zone.name} (–25)`)
         break // Only apply once for the first matching zone
       }
+    }
+  }
+
+  // 6. Off-route penalty (skip if no route or no stops)
+  if (
+    routeCoordinates && routeCoordinates.length > 1 &&
+    typeof lat === 'number' && typeof lng === 'number'
+  ) {
+    const dist = distanceToPolyline(lat, lng, routeCoordinates)
+    if (dist > 1000) {
+      score -= 15
+      reasons.push(`Off route by ${Math.round(dist)} m (–15)`)
     }
   }
 

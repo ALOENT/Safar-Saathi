@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Circle, Tooltip, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Circle, Tooltip, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import riskZonesData from '../data/riskZones.json'
@@ -20,6 +20,8 @@ import { useAuth } from '../context/AuthContext'
 import { useTrip } from '../context/TripContext'
 import { useLocation } from '../context/LocationContext'
 import { supabase } from '../lib/supabase'
+import { fetchRoute } from '../lib/routeCache'
+import { geojsonToLeaflet } from '../lib/routeUtils'
 
 // 1. Fix Leaflet default marker icon path issue in Vite
 delete L.Icon.Default.prototype._getIconUrl
@@ -27,6 +29,13 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+})
+
+// Numbered stop icon for route waypoints
+const createStopIcon = (n) => L.divIcon({
+  className: '',
+  html: `<div style="width:22px;height:22px;border-radius:50%;background:#16a34a;border:2px solid #bbf7d0;color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.5)">${n}</div>`,
+  iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -12],
 })
 
 // Helper to generate time-ago string from timestamp/ISO string
@@ -156,6 +165,10 @@ export const MapPage = () => {
   const [timeTicker, setTimeTicker] = useState(0)
   const [loadingLocations, setLoadingLocations] = useState(true)
 
+  // Route polyline state
+  const [routePolyline, setRoutePolyline] = useState([])       // [lat,lng][] Leaflet
+  const [routeFallback, setRouteFallback] = useState(false)
+
   // Force re-render every 5 seconds to update "last updated X sec ago" timer labels
   useEffect(() => {
     const interval = setInterval(() => {
@@ -163,6 +176,21 @@ export const MapPage = () => {
     }, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  // Fetch OSRM route when trip has stops
+  useEffect(() => {
+    const stops = Array.isArray(currentTrip?.route)
+      ? [...currentTrip.route].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      : []
+    if (stops.length < 2) { setRoutePolyline([]); return }
+    let cancelled = false
+    fetchRoute(stops.map((s) => ({ lat: s.lat, lng: s.lng }))).then((r) => {
+      if (cancelled) return
+      setRoutePolyline(geojsonToLeaflet(r.coordinates))
+      setRouteFallback(r.fallback)
+    })
+    return () => { cancelled = true }
+  }, [currentTrip?.id, (currentTrip?.route?.length ?? 0)])
 
   // Default initial coordinates fallback (e.g. New Delhi default if no location acquired)
   const defaultCenter = [28.6139, 77.209]
@@ -412,7 +440,34 @@ export const MapPage = () => {
 
           <MapController centerPos={centerCoords} />
 
-          {/* User Location Accuracy Circle */}
+          {/* Route polyline */}
+          {routePolyline.length > 1 && (
+            <Polyline
+              positions={routePolyline}
+              pathOptions={{
+                color: '#22c55e',
+                weight: 4,
+                opacity: 0.75,
+                dashArray: routeFallback ? '8 6' : undefined,
+              }}
+            />
+          )}
+
+          {/* Numbered stop markers */}
+          {Array.isArray(currentTrip?.route) &&
+            [...currentTrip.route]
+              .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+              .map((stop, i) => (
+                <Marker key={`stop-${i}`} position={[stop.lat, stop.lng]} icon={createStopIcon(i + 1)}>
+                  <Popup>
+                    <div className="text-xs font-bold">{stop.name}</div>
+                    {stop.planned_time && <div className="text-[10px] text-slate-500">{new Date(stop.planned_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</div>}
+                    {stop.note && <div className="text-[10px] italic text-slate-400">{stop.note}</div>}
+                  </Popup>
+                </Marker>
+              ))
+          }
+
           {myLocation && myLocation.accuracy && (
             <Circle
               center={[myLocation.lat, myLocation.lng]}

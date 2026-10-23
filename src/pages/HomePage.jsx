@@ -7,13 +7,15 @@ import { useLocation } from '../context/LocationContext'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import {
   Shield, AlertTriangle, Compass, MapPin, Copy, Check, UserCheck,
-  X, CheckCircle2, Plus, Key, Users, Crown, AlertCircle,
+  X, CheckCircle2, Plus, Key, Users, Crown, AlertCircle, Navigation, Flag,
 } from 'lucide-react'
 import { computeSafetyScore } from '../lib/safetyScore'
 import { getWeatherCode } from '../lib/weatherCache'
 import { SafetyScoreWidget } from '../components/SafetyScoreWidget'
 import { supabase } from '../lib/supabase'
 import { useToast } from '../context/ToastContext'
+import { fetchRoute } from '../lib/routeCache'
+import { findNextStop, formatDistance } from '../lib/routeUtils'
 
 const SCORE_INTERVAL_MS = 60 * 1000
 const LOCATION_DELTA_M  = 50
@@ -50,6 +52,30 @@ export const HomePage = () => {
   const [scoreLoading, setScoreLoading] = useState(true)
   const lastScoreLocRef = useRef(null)
 
+  // ── Route (OSRM) – fetched once per trip ────────────────────────────────
+  const [routeCoords, setRouteCoords] = useState(null)   // [lng,lat][] GeoJSON
+  const [nextStop, setNextStop]       = useState(null)   // { stop, distanceM }
+
+  // Fetch OSRM route when trip has stops
+  useEffect(() => {
+    const stops = Array.isArray(trip?.route) ? [...trip.route].sort((a,b)=>(a.order??0)-(b.order??0)) : []
+    if (stops.length < 2) { setRouteCoords(null); return }
+    let cancelled = false
+    fetchRoute(stops.map((s) => ({ lat: s.lat, lng: s.lng }))).then((r) => {
+      if (!cancelled) setRouteCoords(r.coordinates)  // [lng,lat][]
+    })
+    return () => { cancelled = true }
+  }, [trip?.id, (trip?.route?.length ?? 0)])
+
+  // Recompute next stop whenever location or route changes
+  useEffect(() => {
+    const stops = Array.isArray(trip?.route) && !isGuide
+      ? [...trip.route].sort((a,b)=>(a.order??0)-(b.order??0))
+      : []
+    if (stops.length === 0 || !myLocation) { setNextStop(null); return }
+    setNextStop(findNextStop(stops, myLocation.lat, myLocation.lng))
+  }, [myLocation, trip?.id, isGuide, (trip?.route?.length ?? 0)])
+
   const fetchGroupLocations = useCallback(async () => {
     if (!trip?.id) return []
     try {
@@ -81,6 +107,7 @@ export const HomePage = () => {
         groupLocations: groupLocations.length > 0 ? groupLocations : myLocation ? [myLocation] : [],
         isSolo,
         weatherCode: wCode,
+        routeCoordinates: routeCoords,   // ← pass OSRM polyline
         now: new Date(),
       })
       setSafetyResult(result)
@@ -89,7 +116,7 @@ export const HomePage = () => {
     } finally {
       setScoreLoading(false)
     }
-  }, [myLocation, isSolo, fetchGroupLocations])
+  }, [myLocation, isSolo, fetchGroupLocations, routeCoords])
 
   useEffect(() => { recalculate() }, [])
   useEffect(() => {
@@ -357,7 +384,35 @@ export const HomePage = () => {
         </div>
       )}
 
-      {/* ── SOS Quick Trigger ── */}
+      {/* ── Next Stop (member only, trip has stops) ── */}
+      {!isGuide && nextStop && (
+        <div className="bg-slate-900/90 border border-blue-900/50 rounded-2xl p-4 space-y-2.5 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Flag className="w-4 h-4 text-blue-400" />
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-300">Next Stop</span>
+            </div>
+            <span className="text-xs font-bold text-blue-200 bg-blue-950/80 border border-blue-700/50 px-2 py-0.5 rounded-full">
+              {formatDistance(nextStop.distanceM)}
+            </span>
+          </div>
+          <div className="flex items-start space-x-2.5">
+            <div className="w-7 h-7 rounded-full bg-blue-900 border border-blue-700 flex items-center justify-center text-blue-300 text-xs font-bold shrink-0">
+              {nextStop.stop.order}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white">{nextStop.stop.name}</p>
+              {nextStop.stop.planned_time && (
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Planned: {new Date(nextStop.stop.planned_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                </p>
+              )}
+              {nextStop.stop.note && <p className="text-[10px] text-slate-500 italic">{nextStop.stop.note}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className={`rounded-2xl p-5 text-center space-y-3 shadow-lg border transition-all duration-300 ${
         isCountingDown
           ? 'bg-red-950/95 border-red-600 shadow-[0_0_30px_rgba(239,68,68,0.3)]'
