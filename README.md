@@ -28,15 +28,8 @@ SafarSaathi connects three kinds of users in real time:
 
 ## Screenshots
 
-> Replace these with current screenshots of the running app (see `docs/screenshots/`).
+<img width="1599" height="838" alt="WhatsApp Image 2026-10-25 at 20 02 55" src="https://github.com/user-attachments/assets/4982d11c-65e0-43fc-8562-d9a976bacd8c" />
 
-| Home and safety score | Live group map | SOS alert |
-|---|---|---|
-| ![Home](docs/screenshots/home.png) | ![Map](docs/screenshots/map.png) | ![SOS](docs/screenshots/sos.png) |
-
-| Trip details and route | Authority dashboard | Emergency profile |
-|---|---|---|
-| ![Trip](docs/screenshots/trip.png) | ![Authority](docs/screenshots/authority.png) | ![Profile](docs/screenshots/profile.png) |
 
 ---
 
@@ -199,17 +192,6 @@ Testing so far is manual: two or three browser windows (traveller, guide, author
 - No automated tests.
 
 ---
-
-## Team
-
-**Team Tensile** · Hacktober Hack Days 2026
-
-| Name | Role |
-|---|---|
-| _Name_ | _Role_ |
-| _Name_ | _Role_ |
-
-**Supervisor / mentor:** _Name_
 
 ## Acknowledgements
 
