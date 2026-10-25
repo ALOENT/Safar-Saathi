@@ -22,6 +22,7 @@ import { useLocation } from '../context/LocationContext'
 import { supabase } from '../lib/supabase'
 import { fetchRoute } from '../lib/routeCache'
 import { geojsonToLeaflet } from '../lib/routeUtils'
+import { PageLoader, OfflineNotice } from '../components/PageStatus'
 
 // 1. Fix Leaflet default marker icon path issue in Vite
 delete L.Icon.Default.prototype._getIconUrl
@@ -332,8 +333,21 @@ export const MapPage = () => {
     }
   }
 
+  if (loadingLocations && Object.keys(locationsMap).length === 0) {
+    return <PageLoader message="Loading live map…" />
+  }
+
   return (
     <div className="pb-safe max-w-md mx-auto px-4 py-4 space-y-4">
+      {/* Offline notice */}
+      {!navigator.onLine && <OfflineNotice />}
+      {/* GPS error notice */}
+      {locationError && (
+        <div className="bg-amber-950/60 border border-amber-800/50 rounded-xl px-3 py-2.5 flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
+          <p className="text-xs text-amber-300">Location unavailable — {locationError}. Map will show last known position.</p>
+        </div>
+      )}
       {/* Header & Location Sharing Toggle */}
       <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-xl flex items-center justify-between">
         <div className="flex items-center space-x-3">

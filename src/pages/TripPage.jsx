@@ -16,6 +16,9 @@ import {
 import { CreateTripWizard } from '../components/CreateTripWizard'
 import { TripDetailsPage } from './TripDetailsPage'
 import { EmergencyInfoPanel } from '../components/EmergencyInfoPanel'
+import { ImageModal } from '../components/ImageModal'
+import { cld } from '../lib/cloudinary'
+import { PageLoader } from '../components/PageStatus'
 
 // ── Modals ────────────────────────────────────────────────────────────────────
 const ConfirmModal = ({ title, subtitle, body, confirmLabel, confirmCls, onConfirm, onCancel, loading, error, icon: Icon = AlertTriangle, iconCls = 'bg-red-950/80 text-red-400 border-red-800/60' }) => (
@@ -40,35 +43,66 @@ const ConfirmModal = ({ title, subtitle, body, confirmLabel, confirmCls, onConfi
 
 // ── Guide SOS card ────────────────────────────────────────────────────────────
 const GuideSosCard = ({ alert, onResolve }) => {
-  const [resolving, setResolving] = useState(false)
+  const [resolving,    setResolving]    = useState(false)
+  const [lightboxSrc,  setLightboxSrc]  = useState(null)
   const handleResolve = async () => { setResolving(true); await onResolve(alert.id); setResolving(false) }
   const statusBadge = { active: 'bg-red-950 border-red-700 text-red-300', acknowledged: 'bg-amber-950 border-amber-700 text-amber-300' }[alert.status] || 'bg-slate-800 border-slate-700 text-slate-300'
 
+  const avatarUrl   = alert.profiles?.avatar_url
+    ? cld(alert.profiles.avatar_url, 'w_80,h_80,c_fill,g_face,f_auto,q_auto')
+    : null
+  const initials    = (alert.profiles?.name || '?').charAt(0).toUpperCase()
+  const photoThumb  = alert.photo_url
+    ? cld(alert.photo_url, 'w_120,h_90,c_fill,f_auto,q_auto')
+    : null
+
   return (
-    <div className="bg-red-950/40 border border-red-800/60 rounded-xl p-4 space-y-3">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center space-x-2">
-          <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" />
-          <div>
-            <p className="text-sm font-bold text-white">{alert.profiles?.name || 'Unknown Traveler'}</p>
-            {alert.profiles?.phone && <p className="text-[10px] text-slate-400 flex items-center space-x-1"><Phone className="w-2.5 h-2.5" /><span>{alert.profiles.phone}</span></p>}
+    <>
+      {lightboxSrc && <ImageModal src={lightboxSrc} alt="SOS photo" onClose={() => setLightboxSrc(null)} />}
+      <div className="bg-red-950/40 border border-red-800/60 rounded-xl p-4 space-y-3">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center space-x-2.5">
+            {/* Traveler avatar */}
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={alert.profiles?.name}
+                className="w-9 h-9 rounded-full object-cover border-2 border-red-700/60 shrink-0" />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-red-900/60 border-2 border-red-700/60 flex items-center justify-center text-red-200 font-bold text-sm shrink-0">
+                {initials}
+              </div>
+            )}
+            <div>
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+                <p className="text-sm font-bold text-white">{alert.profiles?.name || 'Unknown Traveler'}</p>
+              </div>
+              {alert.profiles?.phone && <p className="text-[10px] text-slate-400 flex items-center space-x-1 mt-0.5"><Phone className="w-2.5 h-2.5" /><span>{alert.profiles.phone}</span></p>}
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${statusBadge}`}>{alert.status}</span>
+            <p className="text-[10px] text-slate-500 mt-0.5">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
           </div>
         </div>
-        <div className="text-right">
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${statusBadge}`}>{alert.status}</span>
-          <p className="text-[10px] text-slate-500 mt-0.5">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-        </div>
+        {alert.lat && alert.lng && <p className="text-[10px] text-slate-400 font-mono">📍 {alert.lat.toFixed(5)}, {alert.lng.toFixed(5)}</p>}
+        {/* SOS photo thumbnail */}
+        {photoThumb && (
+          <button type="button" onClick={() => setLightboxSrc(alert.photo_url)}
+            className="block rounded-xl overflow-hidden border border-slate-700 hover:border-emerald-600 transition-colors w-full">
+            <img src={photoThumb} alt="SOS photo" className="w-full h-24 object-cover" />
+            <p className="text-[10px] text-slate-400 py-1 text-center">Tap to view full photo</p>
+          </button>
+        )}
+        <button onClick={handleResolve} disabled={resolving}
+          className="w-full bg-emerald-800 hover:bg-emerald-700 text-emerald-100 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-2 disabled:opacity-50">
+          <CheckCircle2 className="w-4 h-4" />
+          <span>{resolving ? 'Marking…' : 'Traveler is Safe ✓'}</span>
+        </button>
+        {alert.user_id && (
+          <EmergencyInfoPanel userId={alert.user_id} travelerPhone={alert.profiles?.phone} />
+        )}
       </div>
-      {alert.lat && alert.lng && <p className="text-[10px] text-slate-400 font-mono">📍 {alert.lat.toFixed(5)}, {alert.lng.toFixed(5)}</p>}
-      <button onClick={handleResolve} disabled={resolving}
-        className="w-full bg-emerald-800 hover:bg-emerald-700 text-emerald-100 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-2 disabled:opacity-50">
-        <CheckCircle2 className="w-4 h-4" />
-        <span>{resolving ? 'Marking…' : 'Traveler is Safe ✓'}</span>
-      </button>
-      {alert.user_id && (
-        <EmergencyInfoPanel userId={alert.user_id} travelerPhone={alert.profiles?.phone} />
-      )}
-    </div>
+    </>
   )
 }
 
@@ -172,14 +206,7 @@ export const TripPage = () => {
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="pb-safe max-w-md mx-auto px-4 py-8 flex flex-col items-center space-y-3">
-        <div className="w-12 h-12 rounded-full border-2 border-emerald-500/30 flex items-center justify-center">
-          <Compass className="w-6 h-6 text-emerald-400 animate-spin" />
-        </div>
-        <p className="text-sm text-slate-400">Loading trip…</p>
-      </div>
-    )
+    return <PageLoader message="Loading your trip…" />
   }
 
   return (
@@ -269,6 +296,12 @@ export const TripPage = () => {
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{errorMsg}</span>
             </div>
           )}
+          {/* Empty state — no active trip */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 text-center space-y-2">
+            <Compass className="w-8 h-8 text-slate-500 mx-auto" />
+            <p className="text-sm font-semibold text-slate-300">You're not in a trip yet</p>
+            <p className="text-xs text-slate-500 leading-relaxed">Create a group trip, join one with a code, or travel solo with full SOS coverage.</p>
+          </div>
           <div className="grid grid-cols-3 gap-2">
             {[
               { id: 'create', icon: Crown,     label: 'Create Trip', cls: 'bg-amber-950/60 border-amber-800 text-amber-300' },
@@ -276,12 +309,11 @@ export const TripPage = () => {
               { id: 'solo',   icon: UserCheck, label: 'Solo',        cls: 'bg-slate-900 border-slate-700 text-blue-300' },
             ].map(({ id, icon: Icon, label, cls }) => (
               <button key={id} onClick={() => setView(id)}
-                className={`p-3 rounded-xl border flex flex-col items-center text-center gap-1 text-xs font-semibold transition-all hover:opacity-90 ${cls}`}>
-                <Icon className="w-5 h-5" /><span className="text-[10px]">{label}</span>
+                className={`min-h-[80px] p-3 rounded-xl border flex flex-col items-center justify-center text-center gap-1.5 text-xs font-semibold transition-all hover:opacity-90 active:scale-95 ${cls}`}>
+                <Icon className="w-5 h-5" /><span className="text-[11px]">{label}</span>
               </button>
             ))}
           </div>
-          <p className="text-xs text-slate-500 text-center">Select an option above to get started.</p>
         </div>
       )}
 
@@ -312,7 +344,7 @@ export const TripPage = () => {
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white font-mono uppercase tracking-widest focus:outline-none focus:border-emerald-500" />
             </div>
             <button type="submit" disabled={actionLoading}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold py-3.5 px-4 rounded-xl shadow-lg transition-all text-sm uppercase tracking-wider flex items-center justify-center space-x-2 disabled:opacity-50">
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold min-h-[56px] py-3.5 px-4 rounded-xl shadow-lg transition-all text-sm uppercase tracking-wider flex items-center justify-center space-x-2 disabled:opacity-50">
               <span>{actionLoading ? 'Joining…' : 'Join Trip Group'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>

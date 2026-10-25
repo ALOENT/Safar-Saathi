@@ -19,11 +19,12 @@ import 'leaflet/dist/leaflet.css'
 import {
   ChevronRight, ChevronLeft, Search, MapPin, Clock, Navigation,
   CheckCircle2, Loader2, AlertCircle, Flag, Trash2, LocateFixed,
-  Plus, Calendar, ArrowRight, Info, X,
+  Plus, Calendar, ArrowRight, Info, X, Image,
 } from 'lucide-react'
 import { fetchRoute } from '../lib/routeCache'
 import { geojsonToLeaflet } from '../lib/routeUtils'
 import { useLocation as useGeoLocation } from '../context/LocationContext'
+import { CoverUpload } from './CoverUpload'
 
 // ─── Leaflet icon fix ──────────────────────────────────────────────────────
 delete L.Icon.Default.prototype._getIconUrl
@@ -385,13 +386,13 @@ function StepBasics({ form, setForm, errors }) {
           placeholder="Packing tips, contact info, emergency numbers…" />
       </Field>
 
-      {/* Cover image placeholder */}
-      <div className="border-2 border-dashed border-slate-700 rounded-2xl p-5 text-center space-y-1">
-        <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center mx-auto">
-          <Plus className="w-5 h-5 text-slate-500" />
-        </div>
-        <p className="text-xs font-semibold text-slate-400">Cover Image</p>
-        <p className="text-[10px] text-slate-600">Cloudinary upload coming soon</p>
+      {/* Cover image */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-slate-300">Cover Image <span className="text-slate-500 font-normal">(optional)</span></label>
+        <CoverUpload
+          url={form.cover_url || null}
+          onUpload={(url) => setForm(p => ({ ...p, cover_url: url || '' }))}
+        />
       </div>
     </div>
   )
@@ -855,6 +856,7 @@ function initForm(data) {
       description:   data.description   || '',
       meeting_point: data.meeting_point || '',
       notes:         data.notes         || '',
+      cover_url:     data.cover_url     || '',
       startDate:     sd ? localDateStr(sd) : tomorrow(),
       startTime:     sd ? localTimeStr(sd) : '08:00',
       endDate:       ed ? localDateStr(ed) : addDays(sd ? localDateStr(sd) : tomorrow(), 1),
@@ -864,7 +866,7 @@ function initForm(data) {
   }
   const tmrw = tomorrow()
   return {
-    name: '', destination: '', description: '', meeting_point: '', notes: '',
+    name: '', destination: '', description: '', meeting_point: '', notes: '', cover_url: '',
     startDate: tmrw, startTime: '08:00', endDate: addDays(tmrw, 1), meetingTime: '',
     _errs: {},
   }
@@ -910,6 +912,7 @@ export function CreateTripWizard({ onDone, onCreate, initialData }) {
       description:   form.description || null,
       meeting_point: form.meeting_point || null,
       notes:         form.notes || null,
+      cover_url:     form.cover_url || null,
       start_date:    startISO || null,
       end_date:      endISO   || null,
       route:         stops.length ? stops.map((s, i) => ({ ...s, order: i + 1 })) : null,

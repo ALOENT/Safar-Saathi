@@ -9,6 +9,7 @@ import { useTrip }        from '../context/TripContext'
 import { useActiveTrip }  from '../hooks/useActiveTrip'
 import { supabase }       from '../lib/supabase'
 import { useToast }       from '../context/ToastContext'
+import { AvatarUpload }   from '../components/AvatarUpload'
 import {
   User, Phone, Globe, MapPin, Shield, LogOut, Edit3, Save, X,
   Plus, Trash2, Star, AlertCircle, CheckCircle2, Loader2,
@@ -38,6 +39,7 @@ function computeCompletion(profile, medInfo, contacts) {
     !!medInfo?.blood_group,
     !!medInfo?.date_of_birth,
     !!(medInfo?.allergies || medInfo?.medical_conditions),
+    !!profile?.avatar_url,
   ]
   const filled = checks.filter(Boolean).length
   return Math.round((filled / checks.length) * 100)
@@ -391,6 +393,17 @@ export const ProfilePage = () => {
     loadData()
   }
 
+  // ── Avatar upload ──────────────────────────────────────────────────────
+  const handleAvatarUpload = async (secure_url) => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ avatar_url: secure_url })
+      .eq('id', user.id)
+    if (error) { addToast('Failed to save avatar', 'error'); return }
+    await fetchProfile(user.id)
+    addToast('Avatar updated!', 'success')
+  }
+
   // ── Trip actions ───────────────────────────────────────────────────────
   const handleLeave = async () => {
     setTripBusy(true)
@@ -408,8 +421,8 @@ export const ProfilePage = () => {
     else { setShowEnd(false); addToast('Trip ended', 'success') }
   }
 
-  // ── Skeleton ───────────────────────────────────────────────────────────
-  if (!user || !profile) {
+  // ── Skeleton / loading ────────────────────────────────────────────────────
+  if (!user || !profile || loading) {
     return (
       <div className="pb-safe max-w-md mx-auto px-4 py-4 space-y-4 animate-pulse">
         <div className="h-36 bg-slate-900 rounded-2xl" />
@@ -434,15 +447,20 @@ export const ProfilePage = () => {
       {/* ── Header ── */}
       <div className="bg-gradient-to-br from-emerald-900 to-slate-950 border border-emerald-800/60 rounded-2xl p-5 space-y-4 shadow-xl">
         <div className="flex items-center gap-4">
-          <div className={`w-14 h-14 rounded-full bg-gradient-to-tr ${roleColor} border-2 border-white/20 flex items-center justify-center text-white font-extrabold text-xl shadow-lg shrink-0`}>
-            {initials}
-          </div>
+          <AvatarUpload
+            url={profile.avatar_url}
+            name={profile.name}
+            size="w-16 h-16"
+            roleColor={roleColor}
+            onUpload={handleAvatarUpload}
+          />
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-bold text-white truncate">{profile.name}</h2>
-            <p className="text-xs text-slate-400 truncate">{user.email}</p>
+            <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
             <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${roleBadge}`}>
               {profile.role}
             </span>
+            <p className="text-[10px] text-slate-600 mt-0.5">Tap avatar to change photo</p>
           </div>
         </div>
 

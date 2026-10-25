@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSOS } from '../context/SOSContext'
+import { PageLoader } from '../components/PageStatus'
 import {
   AlertTriangle,
   ShieldCheck,
@@ -195,7 +196,7 @@ const SummaryCard = ({ icon, label, value, accent = 'red', pulse = false }) => {
 // ════════════════════════════════════════════════════════════════════════════
 export const AuthorityHome = () => {
   const { user, profile } = useAuth()
-  const { alerts, incomingAlert, acknowledgeAlert, resolveAlert, dismissBanner, playAlarm } = useSOS()
+  const { alerts, incomingAlert, acknowledgeAlert, resolveAlert, dismissBanner, playAlarm, fetchLoading } = useSOS()
 
   // Stats
   const [activeTripCount, setActiveTripCount] = useState(0)
@@ -306,6 +307,8 @@ export const AuthorityHome = () => {
   // h-[360px] on mobile, h-[440px] on lg
   const MAP_HEIGHT_MOBILE  = 360
   const MAP_HEIGHT_DESKTOP = 440
+
+  if (fetchLoading) return <PageLoader message="Loading emergency desk…" />
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">

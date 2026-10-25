@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSOS } from '../context/SOSContext'
 import { EmergencyInfoPanel } from '../components/EmergencyInfoPanel'
+import { ImageModal } from '../components/ImageModal'
+import { cld } from '../lib/cloudinary'
+import { PageLoader, PageError } from '../components/PageStatus'
 import {
   AlertTriangle,
   ShieldCheck,
@@ -34,14 +37,101 @@ const formatDate = (dateStr) => {
   return d.toLocaleDateString([], { day: 'numeric', month: 'short' })
 }
 
+// ── Per-alert card (avatar, photo thumbnail, lightbox) ──────────────────────
+function AlertCard({ alert, personName, personPhone, hasLocation, avatarThumb, avatarInit, photoThumb, onViewMap, onResolve }) {
+  const [lightboxSrc, setLightboxSrc] = React.useState(null)
+  return (
+    <>
+      {lightboxSrc && <ImageModal src={lightboxSrc} alt="SOS photo" onClose={() => setLightboxSrc(null)} />}
+      <div className="bg-slate-900/90 border border-red-900/60 rounded-2xl p-4 space-y-3 shadow-lg relative overflow-hidden">
+        {/* Red accent bar */}
+        <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-500 to-red-800 rounded-l-2xl" />
+
+        {/* Header */}
+        <div className="flex items-start justify-between pl-2">
+          <div className="flex items-center gap-2.5">
+            {/* Avatar */}
+            {avatarThumb ? (
+              <img src={avatarThumb} alt={personName}
+                className="w-9 h-9 rounded-full object-cover border-2 border-red-700/60 shrink-0" />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-red-900/60 border-2 border-red-700/60 flex items-center justify-center text-red-200 font-bold text-sm shrink-0">
+                {avatarInit}
+              </div>
+            )}
+            <div className="space-y-0.5">
+              <div className="flex items-center space-x-2">
+                <span className="bg-red-950 text-red-400 border border-red-700/60 px-2 py-0.5 rounded-md text-[9px] font-black uppercase">SOS</span>
+                <span className="text-[10px] text-slate-500 font-mono flex items-center space-x-1">
+                  <Clock className="w-3 h-3" />
+                  <span>{formatDate(alert.created_at)} {formatTime(alert.created_at)}</span>
+                </span>
+              </div>
+              <h3 className="text-sm font-extrabold text-white">{personName}</h3>
+              {personPhone && (
+                <p className="text-[11px] text-slate-400 flex items-center space-x-1">
+                  <Phone className="w-3 h-3" /><span>{personPhone}</span>
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="p-2 bg-red-950/80 rounded-xl border border-red-800/50 shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-500 animate-bounce" />
+          </div>
+        </div>
+
+        {/* Location */}
+        {hasLocation && (
+          <div className="bg-slate-950/80 rounded-xl px-3 py-2 flex items-center space-x-2 border border-slate-800 ml-2">
+            <MapPin className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+            <span className="text-[11px] text-slate-300 font-mono">
+              {alert.lat.toFixed(5)}, {alert.lng.toFixed(5)}
+            </span>
+          </div>
+        )}
+
+        {/* SOS photo thumbnail */}
+        {photoThumb && (
+          <button type="button" onClick={() => setLightboxSrc(alert.photo_url)}
+            className="block w-full ml-2 rounded-xl overflow-hidden border border-slate-700 hover:border-emerald-600 transition-colors">
+            <img src={photoThumb} alt="SOS photo" className="w-full h-28 object-cover" />
+            <p className="text-[10px] text-slate-400 py-1 text-center">Tap to view full photo</p>
+          </button>
+        )}
+
+        {/* Actions */}
+        <div className="flex space-x-2 pl-2">
+          {hasLocation && (
+            <button onClick={onViewMap}
+              className="flex-1 bg-white/10 hover:bg-white/15 text-white font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 border border-slate-700 active:scale-95 transition-all">
+              <MapPin className="w-4 h-4 text-red-400" /><span>View on Map</span>
+            </button>
+          )}
+          <button onClick={onResolve}
+            className="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 active:scale-95 transition-all">
+            <CheckCircle2 className="w-4 h-4" /><span>Traveler is safe</span>
+          </button>
+        </div>
+
+        {/* Emergency info panel */}
+        {alert.user_id && (
+          <div className="pl-2">
+            <EmergencyInfoPanel userId={alert.user_id} travelerPhone={personPhone} />
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
 export const SOSDeskPage = () => {
   const { profile } = useAuth()
-  const { alerts, guideResolveAlert } = useSOS()
+  const { alerts, guideResolveAlert, fetchLoading, fetchError, fetchAlerts } = useSOS()
   const navigate = useNavigate()
 
   // Separate active vs waiting-for-authority
-  const activeAlerts   = alerts.filter((a) => a.status === 'active' || a.status === 'acknowledged')
-  const waitingAlerts  = alerts.filter((a) => a.status === 'guide_resolved')
+  const activeAlerts  = alerts.filter((a) => a.status === 'active' || a.status === 'acknowledged')
+  const waitingAlerts = alerts.filter((a) => a.status === 'guide_resolved')
 
   const handleViewOnMap = (alert) => {
     if (alert.lat && alert.lng) {
@@ -54,8 +144,14 @@ export const SOSDeskPage = () => {
     await guideResolveAlert(alertId)
   }
 
+  if (fetchLoading) return <PageLoader message="Loading live alerts…" />
+
   return (
     <div className="pb-28 max-w-md mx-auto px-4 py-4 space-y-4">
+      {/* Fetch error notice */}
+      {fetchError && (
+        <PageError message={fetchError} onRetry={fetchAlerts} />
+      )}
       {/* Header */}
       <div className="flex items-center space-x-3 bg-gradient-to-r from-red-950 to-slate-900 border border-red-800/50 p-4 rounded-2xl shadow-lg">
         <div className="p-2.5 bg-red-950/80 rounded-xl text-red-400 border border-red-700/50">
@@ -99,81 +195,28 @@ export const SOSDeskPage = () => {
       ) : (
         <div className="space-y-3">
           {activeAlerts.map((alert) => {
-            const personName = alert.profiles?.name || 'Unknown Traveler'
+            const personName  = alert.profiles?.name  || 'Unknown Traveler'
             const personPhone = alert.profiles?.phone || null
             const hasLocation = alert.lat && alert.lng
+            const avatarThumb = alert.profiles?.avatar_url
+              ? cld(alert.profiles.avatar_url, 'w_80,h_80,c_fill,g_face,f_auto,q_auto') : null
+            const avatarInit  = personName.charAt(0).toUpperCase()
+            const photoThumb  = alert.photo_url
+              ? cld(alert.photo_url, 'w_300,h_160,c_fill,f_auto,q_auto') : null
 
             return (
-              <div
+              <AlertCard
                 key={alert.id}
-                className="bg-slate-900/90 border border-red-900/60 rounded-2xl p-4 space-y-3 shadow-lg relative overflow-hidden"
-              >
-                {/* Red accent bar */}
-                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-500 to-red-800 rounded-l-2xl" />
-
-                {/* Header */}
-                <div className="flex items-start justify-between pl-2">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center space-x-2">
-                      <span className="bg-red-950 text-red-400 border border-red-700/60 px-2 py-0.5 rounded-md text-[9px] font-black uppercase">
-                        SOS
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-mono flex items-center space-x-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{formatDate(alert.created_at)} {formatTime(alert.created_at)}</span>
-                      </span>
-                    </div>
-                    <h3 className="text-sm font-extrabold text-white">{personName}</h3>
-                    {personPhone && (
-                      <p className="text-[11px] text-slate-400 flex items-center space-x-1">
-                        <Phone className="w-3 h-3" />
-                        <span>{personPhone}</span>
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="p-2 bg-red-950/80 rounded-xl border border-red-800/50">
-                    <AlertTriangle className="w-5 h-5 text-red-500 animate-bounce" />
-                  </div>
-                </div>
-
-                {/* Location */}
-                {hasLocation && (
-                  <div className="bg-slate-950/80 rounded-xl px-3 py-2 flex items-center space-x-2 border border-slate-800 ml-2">
-                    <MapPin className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-                    <span className="text-[11px] text-slate-300 font-mono">
-                      {alert.lat.toFixed(5)}, {alert.lng.toFixed(5)}
-                    </span>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex space-x-2 pl-2">
-                  {hasLocation && (
-                    <button
-                      onClick={() => handleViewOnMap(alert)}
-                      className="flex-1 bg-white/10 hover:bg-white/15 text-white font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 border border-slate-700 active:scale-95 transition-all"
-                    >
-                      <MapPin className="w-4 h-4 text-red-400" />
-                      <span>View on Map</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleGuideResolve(alert.id)}
-                    className="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 active:scale-95 transition-all"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Traveler is safe</span>
-                  </button>
-                </div>
-
-                {/* Emergency info panel */}
-                {alert.user_id && (
-                  <div className="pl-2">
-                    <EmergencyInfoPanel userId={alert.user_id} travelerPhone={personPhone} />
-                  </div>
-                )}
-              </div>
+                alert={alert}
+                personName={personName}
+                personPhone={personPhone}
+                hasLocation={hasLocation}
+                avatarThumb={avatarThumb}
+                avatarInit={avatarInit}
+                photoThumb={photoThumb}
+                onViewMap={() => handleViewOnMap(alert)}
+                onResolve={() => handleGuideResolve(alert.id)}
+              />
             )
           })}
         </div>

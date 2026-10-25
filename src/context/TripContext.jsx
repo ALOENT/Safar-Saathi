@@ -37,7 +37,7 @@ export const TripProvider = ({ children }) => {
         const userIds = allMembers.map((m) => m.user_id)
         const { data: profilesData } = await supabase
           .from('profiles')
-          .select('id, name, phone, role')
+          .select('id, name, phone, role, avatar_url')
           .in('id', userIds)
 
         const formattedMembers = allMembers.map((m) => {
@@ -47,6 +47,7 @@ export const TripProvider = ({ children }) => {
             name: p?.name || (m.user_id === user?.id ? profile?.name || 'You' : 'Traveler'),
             phone: p?.phone || '',
             userRole: p?.role || m.role || 'traveler',
+            avatar_url: p?.avatar_url || null,
           }
         })
 

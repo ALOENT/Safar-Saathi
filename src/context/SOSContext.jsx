@@ -20,6 +20,7 @@ export const SOSProvider = ({ children }) => {
   const [alerts, setAlerts]           = useState([])
   const [myOwnAlerts, setMyOwnAlerts] = useState([])  // traveler's personal SOS history
   const [fetchError, setFetchError]   = useState(null) // last fetch error for consumers
+  const [fetchLoading, setFetchLoading] = useState(true) // true until first fetch completes
   const [incomingAlert, setIncomingAlert] = useState(null)
   const [sending, setSending]         = useState(false)
   const [lastSentAlert, setLastSentAlert] = useState(null)
@@ -32,14 +33,15 @@ export const SOSProvider = ({ children }) => {
   // `alerts` = what the guide/authority sees.
   // `myOwnAlerts` = the current user's own sent SOS history (for Alerts tab).
   const fetchAlerts = useCallback(async () => {
-    if (!user) return
+    if (!user) { setFetchLoading(false); return }
 
     setFetchError(null)
+    setFetchLoading(true)
     try {
       // 1. Always fetch user's own SOS history
       const { data: ownData, error: ownError } = await supabase
         .from('sos_alerts')
-        .select('*, profiles:user_id(name, phone)')
+        .select('*, profiles:user_id(name, phone, avatar_url)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(30)
@@ -53,7 +55,7 @@ export const SOSProvider = ({ children }) => {
       if (isAuthority) {
         const { data, error } = await supabase
           .from('sos_alerts')
-          .select('*, profiles:user_id(name, phone)')
+          .select('*, profiles:user_id(name, phone, avatar_url)')
           .in('status', AUTHORITY_ACTIVE_STATUSES)
           .order('created_at', { ascending: false })
         if (error) setFetchError(error.message)
@@ -62,7 +64,7 @@ export const SOSProvider = ({ children }) => {
       } else if (isGuide && currentTrip?.id) {
         const { data, error } = await supabase
           .from('sos_alerts')
-          .select('*, profiles:user_id(name, phone)')
+          .select('*, profiles:user_id(name, phone, avatar_url)')
           .in('status', GUIDE_ACTIVE_STATUSES)
           .eq('trip_id', currentTrip.id)
           .order('created_at', { ascending: false })
@@ -76,6 +78,8 @@ export const SOSProvider = ({ children }) => {
     } catch (err) {
       console.error('Unexpected error fetching SOS alerts:', err)
       setFetchError(err.message || 'Unexpected error')
+    } finally {
+      setFetchLoading(false)
     }
   }, [user, isAuthority, isGuide, currentTrip?.id])
 
@@ -105,7 +109,7 @@ export const SOSProvider = ({ children }) => {
         try {
           const { data: profileData } = await supabase
             .from('profiles')
-            .select('name, phone')
+            .select('name, phone, avatar_url')
             .eq('id', newAlert.user_id)
             .maybeSingle()
           alertWithProfile.profiles = profileData
@@ -307,6 +311,7 @@ export const SOSProvider = ({ children }) => {
         alerts,         // guide/authority-scoped active alerts
         myOwnAlerts,    // traveler's personal SOS history
         fetchError,     // last fetch error string or null
+        fetchLoading,   // true while first fetch is in flight
         incomingAlert,
         sending,
         lastSentAlert,

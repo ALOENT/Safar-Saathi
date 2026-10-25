@@ -7,15 +7,17 @@ import { useLocation } from '../context/LocationContext'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import {
   Shield, AlertTriangle, Compass, MapPin, Copy, Check, UserCheck,
-  X, CheckCircle2, Plus, Key, Users, Crown, AlertCircle, Navigation, Flag, Phone,
+  X, CheckCircle2, Plus, Key, Users, Crown, AlertCircle, Navigation, Flag, Phone, Camera, Loader2,
 } from 'lucide-react'
 import { computeSafetyScore } from '../lib/safetyScore'
 import { getWeatherCode } from '../lib/weatherCache'
 import { SafetyScoreWidget } from '../components/SafetyScoreWidget'
+import { PageLoader } from '../components/PageStatus'
 import { supabase } from '../lib/supabase'
 import { useToast } from '../context/ToastContext'
 import { fetchRoute } from '../lib/routeCache'
 import { findNextStop, formatDistance } from '../lib/routeUtils'
+import { uploadImage } from '../lib/cloudinary'
 
 const SCORE_INTERVAL_MS = 60 * 1000
 const LOCATION_DELTA_M  = 50
@@ -50,6 +52,10 @@ export const HomePage = () => {
   // ── Emergency contact nudge ─────────────────────────────────────────────────
   const [showEcNudge, setShowEcNudge] = useState(false)
   const [primaryContact, setPrimaryContact] = useState(null)
+
+  // ── SOS photo upload ──────────────────────────────────────────────────
+  const [sosPhotoState, setSosPhotoState] = useState({ uploading: false, done: false, error: null })
+  const photoInputRef = useRef(null)
 
   // ── Safety score ──────────────────────────────────────────────────────────
   const [safetyResult, setSafetyResult] = useState({ score: 100, level: 'low', reasons: [] })
@@ -178,10 +184,31 @@ export const HomePage = () => {
 
   useEffect(() => {
     if (!lastSentAlert) return
-    // Keep the sent state longer so user can use the call buttons
+    // Reset photo state on each new alert
+    setSosPhotoState({ uploading: false, done: false, error: null })
     const timer = setTimeout(() => clearLastSent(), 30000)
     return () => clearTimeout(timer)
   }, [lastSentAlert])
+
+  // SOS photo upload – fire and forget; never blocks SOS
+  const handleSOSPhoto = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !lastSentAlert?.id) return
+    e.target.value = ''
+    setSosPhotoState({ uploading: true, done: false, error: null })
+    try {
+      const secure_url = await uploadImage(file)
+      const { error } = await supabase
+        .from('sos_alerts')
+        .update({ photo_url: secure_url })
+        .eq('id', lastSentAlert.id)
+      if (error) throw error
+      setSosPhotoState({ uploading: false, done: true, error: null })
+      addToast('Photo attached to your SOS ✅', 'success')
+    } catch (err) {
+      setSosPhotoState({ uploading: false, done: false, error: err.message || 'Photo upload failed' })
+    }
+  }
 
   // Fetch primary emergency contact when SOS is sent
   useEffect(() => {
@@ -233,6 +260,10 @@ export const HomePage = () => {
   const activeSOSforGuide = isGuide
     ? guideAlerts.filter((a) => a.status === 'active' || a.status === 'acknowledged')
     : []
+
+  if (tripLoading) {
+    return <PageLoader message="Loading your dashboard…" />
+  }
 
   return (
     <div className="pb-safe max-w-md mx-auto px-4 py-4 space-y-5">
@@ -500,6 +531,41 @@ export const HomePage = () => {
                 </a>
               )}
             </div>
+            {/* SOS photo upload */}
+            {sosPhotoState.done ? (
+              <p className="text-xs text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Photo attached
+              </p>
+            ) : sosPhotoState.uploading ? (
+              <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading photo…
+              </p>
+            ) : (
+              <div className="w-full space-y-1">
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  className="w-full bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all"
+                >
+                  <Camera className="w-4 h-4" />
+                  Add a Photo (optional)
+                </button>
+                {sosPhotoState.error && (
+                  <p className="text-[10px] text-red-400 text-center">
+                    {sosPhotoState.error} —{' '}
+                    <button onClick={() => photoInputRef.current?.click()} className="underline">Retry</button>
+                  </p>
+                )}
+              </div>
+            )}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleSOSPhoto}
+            />
             <button onClick={clearLastSent} className="text-xs text-slate-400 underline hover:text-slate-200">
               Dismiss
             </button>
@@ -518,7 +584,7 @@ export const HomePage = () => {
             </div>
             <button
               onClick={handleCancelSOS}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-xl border border-slate-600 flex items-center justify-center space-x-2 text-sm active:scale-95 transition-all"
+              className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold min-h-[56px] py-3 px-4 rounded-xl border border-slate-600 flex items-center justify-center space-x-2 text-sm active:scale-95 transition-all"
             >
               <X className="w-5 h-5" />
               <span>CANCEL</span>
@@ -541,9 +607,9 @@ export const HomePage = () => {
             <button
               onClick={handleSOSPress}
               disabled={sending}
-              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-extrabold py-3.5 px-4 rounded-xl shadow-xl shadow-red-950/80 active:scale-95 transition-all text-sm uppercase tracking-wider flex items-center justify-center space-x-2 disabled:opacity-50"
+              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-extrabold min-h-[64px] py-4 px-4 rounded-xl shadow-xl shadow-red-950/80 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center space-x-2 disabled:opacity-50"
             >
-              <AlertTriangle className="w-5 h-5" />
+              <AlertTriangle className="w-6 h-6" />
               <span>TRIGGER SOS EMERGENCY</span>
             </button>
           </>

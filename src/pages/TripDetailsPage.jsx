@@ -17,6 +17,7 @@ import { useAuth }  from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { fetchRoute }       from '../lib/routeCache'
 import { geojsonToLeaflet } from '../lib/routeUtils'
+import { cld } from '../lib/cloudinary'
 
 // ─── Leaflet icon fix ──────────────────────────────────────────────────────
 delete L.Icon.Default.prototype._getIconUrl
@@ -170,6 +171,17 @@ export function TripDetailsPage({ onEdit, onEnd, onLeave }) {
   return (
     <div className="space-y-3 pb-4">
 
+      {/* ── Cover image (if set) ── */}
+      {trip.cover_url && (
+        <div className="rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
+          <img
+            src={cld(trip.cover_url, 'w_800,h_300,c_fill,f_auto,q_auto')}
+            alt={trip.name}
+            className="w-full h-36 object-cover"
+          />
+        </div>
+      )}
+
       {/* ── Hero header ── */}
       <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 border border-emerald-800/60 rounded-2xl p-5 shadow-xl space-y-4">
         {/* Badges */}
@@ -235,9 +247,17 @@ export function TripDetailsPage({ onEdit, onEnd, onLeave }) {
         <SectionHeader icon={Crown} title="Your Guide" />
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-950 border border-amber-700/60 flex items-center justify-center text-sm font-bold text-amber-300">
-              {guideName.charAt(0).toUpperCase()}
-            </div>
+            {guideMember?.avatar_url ? (
+              <img
+                src={cld(guideMember.avatar_url, 'w_80,h_80,c_fill,g_face,f_auto,q_auto')}
+                alt={guideName}
+                className="w-10 h-10 rounded-full object-cover border-2 border-amber-700/60"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-amber-950 border border-amber-700/60 flex items-center justify-center text-sm font-bold text-amber-300">
+                {guideName.charAt(0).toUpperCase()}
+              </div>
+            )}
             <div>
               <p className="text-sm font-bold text-white">{guideName}</p>
               <p className="text-[10px] text-slate-400">Trip Guide</p>
@@ -350,6 +370,9 @@ export function TripDetailsPage({ onEdit, onEnd, onLeave }) {
           <div className="px-4 py-3 space-y-2">
             {members.map((m, i) => {
               const isCreator = m.user_id === trip.created_by
+              const avatarUrl = m.avatar_url
+                ? cld(m.avatar_url, 'w_80,h_80,c_fill,g_face,f_auto,q_auto')
+                : null
               return (
                 <div key={m.id || i}
                   className={`flex items-center justify-between p-2.5 rounded-xl border ${
@@ -358,11 +381,19 @@ export function TripDetailsPage({ onEdit, onEnd, onLeave }) {
                       : 'bg-slate-950/60 border-slate-800/60'
                   }`}>
                   <div className="flex items-center gap-2.5">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border ${
-                      isCreator ? 'bg-amber-950 text-amber-300 border-amber-700/50' : 'bg-emerald-950 text-emerald-300 border-emerald-700/50'
-                    }`}>
-                      {isCreator ? '🚩' : (m.name?.charAt(0).toUpperCase() || '?')}
-                    </div>
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt={m.name}
+                        className={`w-8 h-8 rounded-full object-cover border ${
+                          isCreator ? 'border-amber-700/50' : 'border-emerald-700/50'
+                        }`}
+                      />
+                    ) : (
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border ${
+                        isCreator ? 'bg-amber-950 text-amber-300 border-amber-700/50' : 'bg-emerald-950 text-emerald-300 border-emerald-700/50'
+                      }`}>
+                        {isCreator ? '🚩' : (m.name?.charAt(0).toUpperCase() || '?')}
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs font-bold text-white">{m.name}</p>
                       <p className="text-[10px] text-slate-400">{isCreator ? 'Guide' : 'Member'}</p>

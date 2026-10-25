@@ -1,9 +1,12 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useSOS } from '../context/SOSContext'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import { SOSDeskPage } from './SOSDeskPage'
 import { EmergencyInfoPanel } from '../components/EmergencyInfoPanel'
+import { ImageModal } from '../components/ImageModal'
+import { cld } from '../lib/cloudinary'
+import { PageLoader } from '../components/PageStatus'
 import {
   Bell, CheckCircle2, AlertTriangle, Clock, MapPin, CheckCircle, Crown, AlertCircle,
 } from 'lucide-react'
@@ -24,59 +27,98 @@ const STATUS_LABEL = {
 
 // ── My own SOS row ────────────────────────────────────────────────────────────
 const MyAlertRow = ({ alert }) => {
+  const [lightbox, setLightbox] = useState(null)
   const alertTime = new Date(alert.created_at).toLocaleString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   })
   const st = alert.status || 'active'
+  const photoThumb = alert.photo_url
+    ? cld(alert.photo_url, 'w_300,h_160,c_fill,f_auto,q_auto') : null
   return (
-    <div className={`bg-slate-900/80 border rounded-2xl p-4 space-y-2 ${st === 'active' ? 'border-red-900/60' : 'border-slate-800'}`}>
-      <div className="flex items-center justify-between">
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_BADGE[st] || 'bg-slate-800 border-slate-700 text-slate-300'}`}>
-          {STATUS_LABEL[st] || st}
-        </span>
-        <span className="text-[10px] text-slate-500 flex items-center space-x-1">
-          <Clock className="w-2.5 h-2.5" /><span>{alertTime}</span>
-        </span>
+    <>
+      {lightbox && <ImageModal src={lightbox} alt="SOS photo" onClose={() => setLightbox(null)} />}
+      <div className={`bg-slate-900/80 border rounded-2xl p-4 space-y-2 ${st === 'active' ? 'border-red-900/60' : 'border-slate-800'}`}>
+        <div className="flex items-center justify-between">
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_BADGE[st] || 'bg-slate-800 border-slate-700 text-slate-300'}`}>
+            {STATUS_LABEL[st] || st}
+          </span>
+          <span className="text-[10px] text-slate-500 flex items-center space-x-1">
+            <Clock className="w-2.5 h-2.5" /><span>{alertTime}</span>
+          </span>
+        </div>
+        {alert.lat && alert.lng && (
+          <p className="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
+            <MapPin className="w-2.5 h-2.5" />
+            <span>{alert.lat.toFixed(5)}, {alert.lng.toFixed(5)}</span>
+          </p>
+        )}
+        {photoThumb && (
+          <button type="button" onClick={() => setLightbox(alert.photo_url)}
+            className="block w-full rounded-xl overflow-hidden border border-slate-700 hover:border-emerald-600 transition-colors">
+            <img src={photoThumb} alt="SOS photo" className="w-full h-24 object-cover" />
+            <p className="text-[10px] text-slate-400 py-1 text-center">Photo — tap to view</p>
+          </button>
+        )}
       </div>
-      {alert.lat && alert.lng && (
-        <p className="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
-          <MapPin className="w-2.5 h-2.5" />
-          <span>{alert.lat.toFixed(5)}, {alert.lng.toFixed(5)}</span>
-        </p>
-      )}
-    </div>
+    </>
   )
 }
 
 // ── Trip alert row (guide sees this for their members) ────────────────────────
 const TripAlertRow = ({ alert }) => {
+  const [lightbox, setLightbox] = useState(null)
   const personName  = alert.profiles?.name  || 'Unknown Traveler'
   const personPhone = alert.profiles?.phone || null
   const alertTime   = new Date(alert.created_at).toLocaleString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   })
-  const st = alert.status || 'active'
+  const st          = alert.status || 'active'
+  const avatarThumb = alert.profiles?.avatar_url
+    ? cld(alert.profiles.avatar_url, 'w_80,h_80,c_fill,g_face,f_auto,q_auto') : null
+  const avatarInit  = personName.charAt(0).toUpperCase()
+  const photoThumb  = alert.photo_url
+    ? cld(alert.photo_url, 'w_300,h_160,c_fill,f_auto,q_auto') : null
   return (
-    <div className={`bg-slate-900/80 border rounded-2xl p-4 space-y-2 ${st === 'active' ? 'border-red-900/60' : 'border-slate-800'}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-white">{personName}</span>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_BADGE[st] || 'bg-slate-800 border-slate-700 text-slate-300'}`}>
-          {STATUS_LABEL[st] || st}
+    <>
+      {lightbox && <ImageModal src={lightbox} alt="SOS photo" onClose={() => setLightbox(null)} />}
+      <div className={`bg-slate-900/80 border rounded-2xl p-4 space-y-2 ${st === 'active' ? 'border-red-900/60' : 'border-slate-800'}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {avatarThumb ? (
+              <img src={avatarThumb} alt={personName}
+                className="w-7 h-7 rounded-full object-cover border border-slate-600 shrink-0" />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300 text-[10px] font-bold shrink-0">
+                {avatarInit}
+              </div>
+            )}
+            <span className="text-xs font-bold text-white">{personName}</span>
+          </div>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_BADGE[st] || 'bg-slate-800 border-slate-700 text-slate-300'}`}>
+            {STATUS_LABEL[st] || st}
+          </span>
+        </div>
+        <span className="text-[10px] text-slate-500 flex items-center space-x-1">
+          <Clock className="w-2.5 h-2.5" /><span>{alertTime}</span>
         </span>
+        {alert.lat && alert.lng && (
+          <p className="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
+            <MapPin className="w-2.5 h-2.5" />
+            <span>{alert.lat.toFixed(5)}, {alert.lng.toFixed(5)}</span>
+          </p>
+        )}
+        {photoThumb && (
+          <button type="button" onClick={() => setLightbox(alert.photo_url)}
+            className="block w-full rounded-xl overflow-hidden border border-slate-700 hover:border-emerald-600 transition-colors">
+            <img src={photoThumb} alt="SOS photo" className="w-full h-24 object-cover" />
+            <p className="text-[10px] text-slate-400 py-1 text-center">Photo — tap to view</p>
+          </button>
+        )}
+        {alert.user_id && (
+          <EmergencyInfoPanel userId={alert.user_id} travelerPhone={personPhone} />
+        )}
       </div>
-      <span className="text-[10px] text-slate-500 flex items-center space-x-1">
-        <Clock className="w-2.5 h-2.5" /><span>{alertTime}</span>
-      </span>
-      {alert.lat && alert.lng && (
-        <p className="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
-          <MapPin className="w-2.5 h-2.5" />
-          <span>{alert.lat.toFixed(5)}, {alert.lng.toFixed(5)}</span>
-        </p>
-      )}
-      {alert.user_id && (
-        <EmergencyInfoPanel userId={alert.user_id} travelerPhone={personPhone} />
-      )}
-    </div>
+    </>
   )
 }
 
@@ -102,11 +144,15 @@ export const AlertsPage = () => {
   const { isGuide, trip } = useActiveTrip()
   // `alerts`      = guide's or authority's active trip alerts
   // `myOwnAlerts` = this user's own SOS sends
-  const { alerts: tripAlerts, myOwnAlerts, fetchError } = useSOS()
+  const { alerts: tripAlerts, myOwnAlerts, fetchError, fetchLoading } = useSOS()
 
   // Authority always sees the full SOS desk
   if (profile?.role === 'authority') {
     return <SOSDeskPage />
+  }
+
+  if (fetchLoading) {
+    return <PageLoader message="Loading your alerts…" />
   }
 
   // Guide sees their own history + all trip member alerts
