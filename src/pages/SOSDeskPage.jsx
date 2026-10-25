@@ -2,6 +2,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSOS } from '../context/SOSContext'
+import { EmergencyInfoPanel } from '../components/EmergencyInfoPanel'
 import {
   AlertTriangle,
   ShieldCheck,
@@ -165,6 +166,13 @@ export const SOSDeskPage = () => {
                     <span>Traveler is safe</span>
                   </button>
                 </div>
+
+                {/* Emergency info panel */}
+                {alert.user_id && (
+                  <div className="pl-2">
+                    <EmergencyInfoPanel userId={alert.user_id} travelerPhone={personPhone} />
+                  </div>
+                )}
               </div>
             )
           })}

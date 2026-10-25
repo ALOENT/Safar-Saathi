@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { CreateTripWizard } from '../components/CreateTripWizard'
 import { TripDetailsPage } from './TripDetailsPage'
+import { EmergencyInfoPanel } from '../components/EmergencyInfoPanel'
 
 // ── Modals ────────────────────────────────────────────────────────────────────
 const ConfirmModal = ({ title, subtitle, body, confirmLabel, confirmCls, onConfirm, onCancel, loading, error, icon: Icon = AlertTriangle, iconCls = 'bg-red-950/80 text-red-400 border-red-800/60' }) => (
@@ -64,6 +65,9 @@ const GuideSosCard = ({ alert, onResolve }) => {
         <CheckCircle2 className="w-4 h-4" />
         <span>{resolving ? 'Marking…' : 'Traveler is Safe ✓'}</span>
       </button>
+      {alert.user_id && (
+        <EmergencyInfoPanel userId={alert.user_id} travelerPhone={alert.profiles?.phone} />
+      )}
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useSOS } from '../context/SOSContext'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import { SOSDeskPage } from './SOSDeskPage'
+import { EmergencyInfoPanel } from '../components/EmergencyInfoPanel'
 import {
   Bell, CheckCircle2, AlertTriangle, Clock, MapPin, CheckCircle, Crown, AlertCircle,
 } from 'lucide-react'
@@ -49,8 +50,9 @@ const MyAlertRow = ({ alert }) => {
 
 // ── Trip alert row (guide sees this for their members) ────────────────────────
 const TripAlertRow = ({ alert }) => {
-  const personName = alert.profiles?.name || 'Unknown Traveler'
-  const alertTime  = new Date(alert.created_at).toLocaleString([], {
+  const personName  = alert.profiles?.name  || 'Unknown Traveler'
+  const personPhone = alert.profiles?.phone || null
+  const alertTime   = new Date(alert.created_at).toLocaleString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   })
   const st = alert.status || 'active'
@@ -70,6 +72,9 @@ const TripAlertRow = ({ alert }) => {
           <MapPin className="w-2.5 h-2.5" />
           <span>{alert.lat.toFixed(5)}, {alert.lng.toFixed(5)}</span>
         </p>
+      )}
+      {alert.user_id && (
+        <EmergencyInfoPanel userId={alert.user_id} travelerPhone={personPhone} />
       )}
     </div>
   )

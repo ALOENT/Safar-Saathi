@@ -7,7 +7,7 @@ import { useLocation } from '../context/LocationContext'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import {
   Shield, AlertTriangle, Compass, MapPin, Copy, Check, UserCheck,
-  X, CheckCircle2, Plus, Key, Users, Crown, AlertCircle, Navigation, Flag,
+  X, CheckCircle2, Plus, Key, Users, Crown, AlertCircle, Navigation, Flag, Phone,
 } from 'lucide-react'
 import { computeSafetyScore } from '../lib/safetyScore'
 import { getWeatherCode } from '../lib/weatherCache'
@@ -32,7 +32,7 @@ function approxDist(a, b) {
 }
 
 export const HomePage = () => {
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
   const { isSolo, members } = useTrip()
   const { trip, isGuide, loading: tripLoading } = useActiveTrip()
   const { sendSOS, sending, lastSentAlert, clearLastSent, myAlertStatus, clearMyAlertStatus, alerts: guideAlerts } = useSOS()
@@ -46,6 +46,10 @@ export const HomePage = () => {
   const [sosError, setSosError] = useState(null)
   const [sosResolutionToast, setSosResolutionToast] = useState(false)
   const prevAlertStatus = useRef(null)
+
+  // ── Emergency contact nudge ─────────────────────────────────────────────────
+  const [showEcNudge, setShowEcNudge] = useState(false)
+  const [primaryContact, setPrimaryContact] = useState(null)
 
   // ── Safety score ──────────────────────────────────────────────────────────
   const [safetyResult, setSafetyResult] = useState({ score: 100, level: 'low', reasons: [] })
@@ -174,9 +178,34 @@ export const HomePage = () => {
 
   useEffect(() => {
     if (!lastSentAlert) return
-    const timer = setTimeout(() => clearLastSent(), 5000)
+    // Keep the sent state longer so user can use the call buttons
+    const timer = setTimeout(() => clearLastSent(), 30000)
     return () => clearTimeout(timer)
   }, [lastSentAlert])
+
+  // Fetch primary emergency contact when SOS is sent
+  useEffect(() => {
+    if (!lastSentAlert || !user) { setPrimaryContact(null); return }
+    supabase
+      .from('emergency_contacts')
+      .select('name, phone')
+      .eq('user_id', user.id)
+      .eq('is_primary', true)
+      .maybeSingle()
+      .then(({ data }) => setPrimaryContact(data))
+  }, [lastSentAlert, user])
+
+  // Check if user has emergency contacts → show nudge
+  useEffect(() => {
+    if (!user) return
+    const dismissed = localStorage.getItem('safarsathi_ec_nudge_dismissed') === 'true'
+    if (dismissed) return
+    supabase
+      .from('emergency_contacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .then(({ count }) => { if (count === 0) setShowEcNudge(true) })
+  }, [user])
 
   // ── SOS resolution toast ──────────────────────────────────────────────────
   useEffect(() => {
@@ -215,6 +244,27 @@ export const HomePage = () => {
           <button onClick={() => { setSosResolutionToast(false); clearMyAlertStatus() }} className="text-emerald-400 hover:text-white">
             <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* ── Emergency contact nudge ── */}
+      {showEcNudge && (
+        <div className="bg-amber-950/70 border border-amber-800/60 rounded-2xl px-4 py-3 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <p className="text-xs text-amber-200">Add an emergency contact for your safety.</p>
+          </div>
+          <div className="flex items-center gap-2 ml-2 shrink-0">
+            <button onClick={() => navigate('/profile')}
+              className="text-[11px] text-amber-300 font-bold hover:text-amber-100 bg-amber-900/60 border border-amber-700/50 px-2.5 py-1 rounded-lg">
+              Add
+            </button>
+            <button
+              onClick={() => { setShowEcNudge(false); localStorage.setItem('safarsathi_ec_nudge_dismissed','true') }}
+              className="p-1 text-amber-400 hover:text-amber-200">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -430,6 +480,21 @@ export const HomePage = () => {
               <p className="text-xs text-emerald-300 mt-0.5">
                 Signal broadcast to {trip ? 'your guide and' : ''} local authorities.
               </p>
+            </div>
+            {/* Emergency call buttons */}
+            <div className="flex gap-2 w-full">
+              <a href="tel:112"
+                className="flex-1 bg-red-700 hover:bg-red-600 text-white font-bold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs active:scale-95 transition-all">
+                <Phone className="w-4 h-4" />
+                Call 112
+              </a>
+              {primaryContact && (
+                <a href={`tel:${primaryContact.phone}`}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-semibold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs active:scale-95 transition-all">
+                  <Phone className="w-4 h-4 text-emerald-400" />
+                  {primaryContact.name}
+                </a>
+              )}
             </div>
             <button onClick={clearLastSent} className="text-xs text-slate-400 underline hover:text-slate-200">
               Dismiss
