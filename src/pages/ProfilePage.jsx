@@ -216,11 +216,12 @@ export const ProfilePage = () => {
 
   // ── Load data ──────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
-    if (!user) return
+    const userId = user?.id
+    if (!userId) return
     setLoading(true)
     const [medRes, contactRes] = await Promise.all([
-      supabase.from('emergency_profiles').select('*').eq('user_id', user.id).maybeSingle(),
-      supabase.from('emergency_contacts').select('*').eq('user_id', user.id).order('is_primary', { ascending: false }),
+      supabase.from('emergency_profiles').select('*').eq('user_id', userId).maybeSingle(),
+      supabase.from('emergency_contacts').select('*').eq('user_id', userId).order('is_primary', { ascending: false }),
     ])
     setMedInfo(medRes.data)
     if (medRes.data) {
@@ -238,7 +239,7 @@ export const ProfilePage = () => {
     }
     setContacts(contactRes.data || [])
     setLoading(false)
-  }, [user])
+  }, [user?.id])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -259,10 +260,15 @@ export const ProfilePage = () => {
   // ── Save personal ──────────────────────────────────────────────────────
   const savePersonal = async () => {
     if (!personal.name.trim()) { addToast('Name cannot be empty', 'error'); return }
+    const trimmedPhone = personal.phone.trim()
+    if (trimmedPhone) {
+      const phoneErr = validatePhone(trimmedPhone)
+      if (phoneErr) { addToast(phoneErr, 'error'); return }
+    }
     setSavingP(true)
     const { error } = await supabase.from('profiles').update({
       name:               personal.name.trim(),
-      phone:              personal.phone.trim()              || null,
+      phone:              trimmedPhone              || null,
       home_city:          personal.home_city.trim()          || null,
       preferred_language: personal.preferred_language         || null,
     }).eq('id', user.id)
@@ -306,25 +312,29 @@ export const ProfilePage = () => {
   }
 
   const cancelMed = () => {
-    if (medInfo) {
-      setMed({
-        blood_group:        medInfo.blood_group         || '',
-        date_of_birth:      medInfo.date_of_birth        || '',
-        gender:             medInfo.gender               || '',
-        nationality:        medInfo.nationality           || '',
-        home_address:       medInfo.home_address          || '',
-        allergies:          medInfo.allergies             || '',
-        medical_conditions: medInfo.medical_conditions    || '',
-        medications:        medInfo.medications           || '',
-      })
-    }
+    const d = medInfo || {}
+    setMed({
+      blood_group:        d.blood_group         || '',
+      date_of_birth:      d.date_of_birth        || '',
+      gender:             d.gender               || '',
+      nationality:        d.nationality           || '',
+      home_address:       d.home_address          || '',
+      allergies:          d.allergies             || '',
+      medical_conditions: d.medical_conditions    || '',
+      medications:        d.medications           || '',
+    })
     setEditM(false)
   }
 
   // ── Contacts CRUD ──────────────────────────────────────────────────────
   const setPrimary = async (id) => {
-    await supabase.from('emergency_contacts').update({ is_primary: false }).eq('user_id', user.id)
-    await supabase.from('emergency_contacts').update({ is_primary: true }).eq('id', id)
+    // Write the new primary first; only clear others if that succeeds
+    const { error: setErr } = await supabase
+      .from('emergency_contacts').update({ is_primary: true }).eq('id', id)
+    if (setErr) { addToast('Failed to update primary contact', 'error'); return }
+    await supabase
+      .from('emergency_contacts').update({ is_primary: false })
+      .eq('user_id', user.id).neq('id', id)
     loadData()
     addToast('Primary contact updated', 'success')
   }
@@ -332,11 +342,20 @@ export const ProfilePage = () => {
   const addContact = async (data) => {
     setSavingC(true)
     if (data.is_primary) {
-      await supabase.from('emergency_contacts').update({ is_primary: false }).eq('user_id', user.id)
+      // Insert the new contact first
+      const { error: insErr } = await supabase
+        .from('emergency_contacts').insert({ ...data, user_id: user.id })
+      if (insErr) { setSavingC(false); addToast('Failed to add contact', 'error'); return }
+      // Clear primary flag on all other rows
+      await supabase
+        .from('emergency_contacts').update({ is_primary: false })
+        .eq('user_id', user.id).eq('is_primary', true).neq('name', data.name)
+    } else {
+      const { error: insErr } = await supabase
+        .from('emergency_contacts').insert({ ...data, user_id: user.id })
+      if (insErr) { setSavingC(false); addToast('Failed to add contact', 'error'); return }
     }
-    const { error } = await supabase.from('emergency_contacts').insert({ ...data, user_id: user.id })
     setSavingC(false)
-    if (error) { addToast('Failed to add contact', 'error'); return }
     setShowAdd(false)
     addToast('Contact added!', 'success')
     loadData()
@@ -345,11 +364,20 @@ export const ProfilePage = () => {
   const saveContact = async (id, data) => {
     setSavingC(true)
     if (data.is_primary) {
-      await supabase.from('emergency_contacts').update({ is_primary: false }).eq('user_id', user.id)
+      // Update the target row to primary first
+      const { error: setErr } = await supabase
+        .from('emergency_contacts').update(data).eq('id', id)
+      if (setErr) { setSavingC(false); addToast('Failed to update', 'error'); return }
+      // Clear primary on all other rows
+      await supabase
+        .from('emergency_contacts').update({ is_primary: false })
+        .eq('user_id', user.id).neq('id', id)
+    } else {
+      const { error: updErr } = await supabase
+        .from('emergency_contacts').update(data).eq('id', id)
+      if (updErr) { setSavingC(false); addToast('Failed to update', 'error'); return }
     }
-    const { error } = await supabase.from('emergency_contacts').update(data).eq('id', id)
     setSavingC(false)
-    if (error) { addToast('Failed to update', 'error'); return }
     setEditingId(null)
     addToast('Contact updated!', 'success')
     loadData()

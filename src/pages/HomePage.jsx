@@ -186,19 +186,23 @@ export const HomePage = () => {
   // Fetch primary emergency contact when SOS is sent
   useEffect(() => {
     if (!lastSentAlert || !user) { setPrimaryContact(null); return }
+    let cancelled = false
     supabase
       .from('emergency_contacts')
       .select('name, phone')
       .eq('user_id', user.id)
       .eq('is_primary', true)
+      .limit(1)
       .maybeSingle()
-      .then(({ data }) => setPrimaryContact(data))
+      .then(({ data }) => { if (!cancelled) setPrimaryContact(data) })
+    return () => { cancelled = true }
   }, [lastSentAlert, user])
 
-  // Check if user has emergency contacts → show nudge
+  // Check if user has emergency contacts → show nudge (per-user dismissal key)
   useEffect(() => {
     if (!user) return
-    const dismissed = localStorage.getItem('safarsathi_ec_nudge_dismissed') === 'true'
+    const nudgeKey = `safarsathi_ec_nudge_dismissed_${user.id}`
+    const dismissed = localStorage.getItem(nudgeKey) === 'true'
     if (dismissed) return
     supabase
       .from('emergency_contacts')
@@ -260,7 +264,7 @@ export const HomePage = () => {
               Add
             </button>
             <button
-              onClick={() => { setShowEcNudge(false); localStorage.setItem('safarsathi_ec_nudge_dismissed','true') }}
+              onClick={() => { setShowEcNudge(false); localStorage.setItem(`safarsathi_ec_nudge_dismissed_${user.id}`,'true') }}
               className="p-1 text-amber-400 hover:text-amber-200">
               <X className="w-3.5 h-3.5" />
             </button>

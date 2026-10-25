@@ -32,6 +32,8 @@ export function EmergencyInfoPanel({ userId, travelerPhone }) {
           .eq('user_id', userId)
           .order('is_primary', { ascending: false }),
       ])
+      if (medRes.error) throw medRes.error
+      if (contactRes.error) throw contactRes.error
       setMedInfo(medRes.data)
       setContacts(contactRes.data || [])
       setLoaded(true)
@@ -41,6 +43,7 @@ export function EmergencyInfoPanel({ userId, travelerPhone }) {
       setLoading(false)
     }
   }
+
 
   const toggle = () => {
     if (!expanded && !loaded) load()
